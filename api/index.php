@@ -50,6 +50,50 @@ function api_validate_same_origin(): void
     }
 }
 
+function api_json_body(): array
+{
+    $body = json_decode((string) file_get_contents('php://input'), true);
+    return is_array($body) ? $body : [];
+}
+
+function api_start_admin_session(): void
+{
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        return;
+    }
+
+    $isSecure = str_starts_with(Config::get('APP_URL', '') ?? '', 'https://');
+    session_name('thesex_admin');
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path' => '/api/',
+        'secure' => $isSecure,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    session_start();
+}
+
+function api_require_admin(PDO $pdo): array
+{
+    api_start_admin_session();
+    $adminId = filter_var($_SESSION['admin_id'] ?? null, FILTER_VALIDATE_INT);
+    if (!$adminId) {
+        Response::error('Autenticação necessária.', 401);
+    }
+
+    $statement = $pdo->prepare('SELECT id, email FROM admins WHERE id = :id LIMIT 1');
+    $statement->execute(['id' => $adminId]);
+    $admin = $statement->fetch();
+    if (!$admin) {
+        $_SESSION = [];
+        session_destroy();
+        Response::error('Sessão expirada.', 401);
+    }
+
+    return $admin;
+}
+
 function api_profile_output(array $profile, array $photos): array
 {
     $tags = json_decode((string) $profile['tags'], true);
@@ -64,6 +108,15 @@ function api_profile_output(array $profile, array $photos): array
         'photos' => array_map(static fn(array $photo): string => '/api/' . ltrim($photo['path'], '/'), $photos),
         'is_featured' => (bool) $profile['is_featured'],
     ];
+}
+
+function api_admin_profile_output(array $profile, array $photos): array
+{
+    return array_merge(api_profile_output($profile, $photos), [
+        'status' => $profile['status'],
+        'created_at' => $profile['created_at'],
+        'updated_at' => $profile['updated_at'],
+    ]);
 }
 
 try {
@@ -82,6 +135,93 @@ try {
     }
 
     $pdo = Database::connect();
+
+    if (str_starts_with($path, '/v1/admin/')) {
+        api_start_admin_session();
+    }
+
+    if ($method === 'POST' && $path === '/v1/admin/login') {
+        api_validate_same_origin();
+        $body = api_json_body();
+        $email = strtolower(trim((string) ($body['email'] ?? '')));
+        $password = (string) ($body['password'] ?? '');
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL) || $password === '') {
+            Response::error('Informe e-mail e senha válidos.', 422);
+        }
+
+        $statement = $pdo->prepare('SELECT id, email, password_hash FROM admins WHERE email = :email LIMIT 1');
+        $statement->execute(['email' => $email]);
+        $admin = $statement->fetch();
+        if (!$admin || !password_verify($password, $admin['password_hash'])) {
+            Response::error('E-mail ou senha inválidos.', 401);
+        }
+
+        session_regenerate_id(true);
+        $_SESSION['admin_id'] = (int) $admin['id'];
+        Response::json(['data' => ['id' => (int) $admin['id'], 'email' => $admin['email']]]);
+    }
+
+    if ($method === 'POST' && $path === '/v1/admin/logout') {
+        api_validate_same_origin();
+        api_require_admin($pdo);
+        $_SESSION = [];
+        session_destroy();
+        Response::json(['data' => ['signed_out' => true]]);
+    }
+
+    if ($method === 'GET' && $path === '/v1/admin/me') {
+        $admin = api_require_admin($pdo);
+        Response::json(['data' => ['id' => (int) $admin['id'], 'email' => $admin['email']]]);
+    }
+
+    if ($method === 'GET' && $path === '/v1/admin/profiles') {
+        api_require_admin($pdo);
+        $status = (string) ($_GET['status'] ?? 'pending');
+        $allowedStatuses = ['pending', 'active', 'rejected', 'archived'];
+        if (!in_array($status, $allowedStatuses, true)) {
+            Response::error('Filtro de status inválido.', 422);
+        }
+
+        $statement = $pdo->prepare('SELECT * FROM profiles WHERE status = :status ORDER BY created_at DESC LIMIT 100');
+        $statement->execute(['status' => $status]);
+        $profiles = $statement->fetchAll();
+        $photoStatement = $pdo->prepare('SELECT path FROM profile_photos WHERE profile_id = :profile_id ORDER BY position ASC');
+        $data = [];
+        foreach ($profiles as $profile) {
+            $photoStatement->execute(['profile_id' => $profile['id']]);
+            $data[] = api_admin_profile_output($profile, $photoStatement->fetchAll());
+        }
+        Response::json(['data' => $data]);
+    }
+
+    if ($method === 'PATCH' && preg_match('#^/v1/admin/profiles/([a-f0-9-]{36})$#i', $path, $matches)) {
+        api_validate_same_origin();
+        api_require_admin($pdo);
+        $body = api_json_body();
+        $allowedStatuses = ['pending', 'active', 'rejected', 'archived'];
+        $status = $body['status'] ?? null;
+        if (!is_string($status) || !in_array($status, $allowedStatuses, true)) {
+            Response::error('Status inválido.', 422);
+        }
+        $isFeatured = !empty($body['is_featured']) && $status === 'active' ? 1 : 0;
+
+        $statement = $pdo->prepare('UPDATE profiles SET status = :status, is_featured = :is_featured WHERE id = :id');
+        $statement->execute(['status' => $status, 'is_featured' => $isFeatured, 'id' => $matches[1]]);
+        if ($statement->rowCount() === 0) {
+            $exists = $pdo->prepare('SELECT id FROM profiles WHERE id = :id LIMIT 1');
+            $exists->execute(['id' => $matches[1]]);
+            if (!$exists->fetch()) {
+                Response::error('Perfil não encontrado.', 404);
+            }
+        }
+
+        $profileStatement = $pdo->prepare('SELECT * FROM profiles WHERE id = :id LIMIT 1');
+        $profileStatement->execute(['id' => $matches[1]]);
+        $profile = $profileStatement->fetch();
+        $photoStatement = $pdo->prepare('SELECT path FROM profile_photos WHERE profile_id = :profile_id ORDER BY position ASC');
+        $photoStatement->execute(['profile_id' => $matches[1]]);
+        Response::json(['data' => api_admin_profile_output($profile, $photoStatement->fetchAll())]);
+    }
 
     if ($method === 'GET' && $path === '/v1/profiles') {
         $query = trim((string) ($_GET['q'] ?? ''));

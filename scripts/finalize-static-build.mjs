@@ -13,8 +13,8 @@
  * Why build into `.vite-out` instead of `dist/` directly: the platform pre-injects
  * `dist/.../​_redirects` (the SPA fallback) owned by another user, and Start's client
  * build tries to EMPTY its out dir first → `EACCES: unlink _redirects`. Building into
- * a clean temp dir avoids that entirely; here we only COPY into `dist/` (never delete),
- * so a pre-existing read-only `_redirects` is tolerated.
+ * a clean temp dir avoids that entirely. We clear only build-owned entries before
+ * copying, keeping a platform-managed `_redirects` untouched.
  */
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -28,6 +28,13 @@ if (!existsSync(SRC)) {
 }
 
 mkdirSync(DEST, { recursive: true })
+
+// Hashed JS and CSS filenames change on every build. Removing only these known,
+// build-owned paths avoids stale files accumulating in Git/deploys while preserving
+// host-managed files such as `_redirects`.
+for (const entry of ['assets', 'admin', 'create', 'profile', 'index.html']) {
+  rmSync(join(DEST, entry), { recursive: true, force: true })
+}
 
 for (const entry of readdirSync(SRC)) {
   try {
