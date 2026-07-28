@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
-import { blink } from '@/blink/client'
+import { profilesApi } from '@/lib/api'
 import { ArrowLeft, Upload, Plus, X, Image, Loader2, CheckCircle } from 'lucide-react'
 import { Link } from '@tanstack/react-router'
 
@@ -9,8 +9,8 @@ const TAG_OPTIONS = ['VIP', 'Travel', 'Dinner Dates', 'Fashion', 'Multilingual',
 export const Route = createFileRoute('/create')({
   head: () => ({
     meta: [
-      { title: 'Create Profile · GlamClassifieds' },
-      { name: 'description', content: 'Create your model profile on GlamClassifieds and reach premium clients worldwide.' },
+      { title: 'Anunciar perfil · TheSex' },
+      { name: 'description', content: 'Envie seu perfil para análise e publicação.' },
     ],
   }),
   component: CreateProfilePage,
@@ -54,37 +54,25 @@ function CreateProfilePage() {
     e.preventDefault()
     setError('')
     if (!name.trim() || !age || !city.trim() || !price.trim()) {
-      setError('Please fill in all required fields.')
+      setError('Preencha todos os campos obrigatórios.')
       return
     }
     setSubmitting(true)
     try {
-      // Upload photos
-      let photoUrls: string[] = []
-      for (const p of photos) {
-        const ext = p.file.name.split('.').pop() || 'jpg'
-        const { publicUrl } = await blink.storage.upload(p.file, `profiles/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`)
-        photoUrls.push(publicUrl)
-      }
-
-      // Create profile
-      const table = blink.db.table('profiles')
-      await table.create({
+      await profilesApi.submit({
         name,
         age,
         city,
         price,
         description,
-        photos: JSON.stringify(photoUrls),
-        tags: JSON.stringify(selectedTags),
-        is_featured: 0,
-        user_id: '',
+        tags: selectedTags,
+        photos: photos.map(photo => photo.file),
       })
 
       setSubmitted(true)
       setTimeout(() => navigate({ to: '/' }), 2000)
     } catch (err: any) {
-      setError(err?.message || 'Something went wrong. Please try again.')
+      setError(err?.message || 'Não foi possível enviar o perfil. Tente novamente.')
     } finally {
       setSubmitting(false)
     }
@@ -95,23 +83,23 @@ function CreateProfilePage() {
       <div className="mx-auto max-w-2xl px-4 py-6 sm:px-6 lg:px-8">
         <Link to="/" className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
           <ArrowLeft className="h-4 w-4" />
-          Back to directory
+          Voltar ao diretório
         </Link>
 
-        <h1 className="font-serif text-2xl font-bold text-foreground">Create Your Profile</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Fill in the details to list yourself on GlamClassifieds.</p>
+        <h1 className="font-serif text-2xl font-bold text-foreground">Anunciar perfil</h1>
+        <p className="mt-1 text-sm text-muted-foreground">Envie seus dados. Todo perfil passa por análise antes da publicação.</p>
 
         {submitted ? (
           <div className="mt-10 flex flex-col items-center justify-center rounded-2xl border border-border bg-card p-12 text-center">
             <CheckCircle className="h-12 w-12 text-accent" />
-            <h2 className="mt-4 text-lg font-semibold text-foreground">Profile Created!</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Redirecting you to the directory...</p>
+            <h2 className="mt-4 text-lg font-semibold text-foreground">Perfil enviado!</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Vamos analisar os dados antes de publicar.</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="mt-8 space-y-6">
             {/* Photos */}
             <div>
-              <label className="text-sm font-semibold text-foreground">Photos <span className="text-muted-foreground font-normal">(up to 5)</span></label>
+              <label className="text-sm font-semibold text-foreground">Fotos <span className="text-muted-foreground font-normal">(até 5)</span></label>
               <div className="mt-2 flex flex-wrap gap-3">
                 {photos.map((p, i) => (
                   <div key={i} className="relative h-28 w-28 overflow-hidden rounded-xl border border-border">
@@ -128,34 +116,34 @@ function CreateProfilePage() {
                 {photos.length < 5 && (
                   <label className="flex h-28 w-28 cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed border-border text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary">
                     <Upload className="h-5 w-5" />
-                    <span className="text-[10px] font-medium">Add Photo</span>
+                    <span className="text-[10px] font-medium">Adicionar</span>
                     <input type="file" accept="image/*" onChange={handlePhotos} className="hidden" multiple />
                   </label>
                 )}
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">First photo will be your main display image.</p>
+              <p className="mt-1 text-xs text-muted-foreground">A primeira foto será usada como imagem principal.</p>
             </div>
 
             {/* Name + Age */}
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="text-sm font-semibold text-foreground">Name *</label>
+                <label className="text-sm font-semibold text-foreground">Nome *</label>
                 <input
                   type="text"
                   value={name}
                   onChange={e => setName(e.target.value)}
-                  placeholder="Your display name"
+                  placeholder="Nome de exibição"
                   className="mt-1.5 w-full rounded-xl border border-input bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
                   required
                 />
               </div>
               <div>
-                <label className="text-sm font-semibold text-foreground">Age *</label>
+                <label className="text-sm font-semibold text-foreground">Idade *</label>
                 <input
                   type="number"
                   value={age}
                   onChange={e => setAge(e.target.value)}
-                  placeholder="Your age"
+                  placeholder="Sua idade"
                   min={18}
                   max={99}
                   className="mt-1.5 w-full rounded-xl border border-input bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
@@ -167,18 +155,18 @@ function CreateProfilePage() {
             {/* City + Price */}
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="text-sm font-semibold text-foreground">City *</label>
+                <label className="text-sm font-semibold text-foreground">Cidade *</label>
                 <input
                   type="text"
                   value={city}
                   onChange={e => setCity(e.target.value)}
-                  placeholder="e.g. Paris, New York"
+                  placeholder="Ex.: São Paulo, Rio de Janeiro"
                   className="mt-1.5 w-full rounded-xl border border-input bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
                   required
                 />
               </div>
               <div>
-                <label className="text-sm font-semibold text-foreground">Rate *</label>
+                <label className="text-sm font-semibold text-foreground">Valor *</label>
                 <input
                   type="text"
                   value={price}
@@ -192,7 +180,7 @@ function CreateProfilePage() {
 
             {/* Tags */}
             <div>
-              <label className="text-sm font-semibold text-foreground">Tags</label>
+                <label className="text-sm font-semibold text-foreground">Interesses</label>
               <div className="mt-2 flex flex-wrap gap-2">
                 {TAG_OPTIONS.map(tag => (
                   <button
@@ -213,11 +201,11 @@ function CreateProfilePage() {
 
             {/* Description */}
             <div>
-              <label className="text-sm font-semibold text-foreground">About</label>
+              <label className="text-sm font-semibold text-foreground">Sobre você</label>
               <textarea
                 value={description}
                 onChange={e => setDescription(e.target.value)}
-                placeholder="Tell clients about yourself, your interests, and what makes you unique..."
+                placeholder="Conte um pouco sobre você, seus interesses e disponibilidade..."
                 rows={4}
                 className="mt-1.5 w-full rounded-xl border border-input bg-card px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20 resize-none"
               />
@@ -239,10 +227,10 @@ function CreateProfilePage() {
               {submitting ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Creating Profile...
+                  Enviando perfil...
                 </>
               ) : (
-                'Publish Profile'
+                'Enviar para análise'
               )}
             </button>
           </form>

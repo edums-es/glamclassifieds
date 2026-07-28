@@ -1,0 +1,7 @@
+Options -Indexes
+RewriteEngine On
+
+# Send API paths to the PHP router while keeping uploaded media directly accessible.
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [QSA,L]

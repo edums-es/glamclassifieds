@@ -1,26 +1,13 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState, useEffect, useCallback } from 'react'
-import { blink } from '@/blink/client'
-import { BlinkClientBoundary } from '@/components/BlinkClientBoundary'
+import { profilesApi, type Profile } from '@/lib/api'
 import { ArrowLeft, MapPin, Star, Shield, Heart, Share2, Crown } from 'lucide-react'
-
-interface Profile {
-  id: string
-  name: string
-  age: number
-  city: string
-  price: string
-  photos: string
-  description: string
-  tags: string
-  is_featured: string
-}
 
 export const Route = createFileRoute('/profile/$id')({
   head: ({ params }) => ({
     meta: [
-      { title: `Profile · GlamClassifieds` },
-      { name: 'description', content: 'View this model profile on GlamClassifieds.' },
+      { title: 'Perfil · TheSex' },
+      { name: 'description', content: 'Conheça este perfil publicado no TheSex.' },
     ],
   }),
   component: ProfilePage,
@@ -29,9 +16,7 @@ export const Route = createFileRoute('/profile/$id')({
 function ProfilePage() {
   return (
     <main className="min-h-dvh bg-background">
-      <BlinkClientBoundary fallback={<ProfileSkeleton />}>
-        <ProfileContent />
-      </BlinkClientBoundary>
+      <ProfileContent />
     </main>
   )
 }
@@ -46,9 +31,7 @@ function ProfileContent() {
   const loadProfile = useCallback(async () => {
     setLoading(true)
     try {
-      const table = blink.db.table<Profile>('profiles')
-      const result = await table.get(id)
-      setProfile(result)
+      setProfile(await profilesApi.get(id))
     } catch (err) {
       console.error('Failed to load profile:', err)
     } finally {
@@ -61,18 +44,16 @@ function ProfileContent() {
   if (loading) return <ProfileSkeleton />
   if (!profile) return <NotFound />
 
-  let photos: string[] = []
-  let tags: string[] = []
-  try { photos = JSON.parse(profile.photos) } catch {}
-  try { tags = JSON.parse(profile.tags) } catch {}
-  const isFeatured = Number(profile.is_featured) > 0
+  const photos = profile.photos
+  const tags = profile.tags
+  const isFeatured = profile.is_featured
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
       {/* Back nav */}
       <Link to="/" className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
         <ArrowLeft className="h-4 w-4" />
-        Back to directory
+        Voltar ao diretório
       </Link>
 
       {/* Hero photo area */}
@@ -92,7 +73,7 @@ function ProfileContent() {
             )}
             {isFeatured && (
               <div className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-accent px-3 py-1.5 text-sm font-bold text-accent-foreground shadow-md">
-                <Crown className="h-4 w-4" /> Featured
+                <Crown className="h-4 w-4" /> Destaque
               </div>
             )}
           </div>
@@ -123,7 +104,7 @@ function ProfileContent() {
                 <MapPin className="h-3.5 w-3.5" />
                 {profile.city}
                 <span className="opacity-30">·</span>
-                {profile.age} years
+                {profile.age} anos
               </div>
             </div>
             <div className="flex items-center gap-1.5">
@@ -143,7 +124,7 @@ function ProfileContent() {
 
           {/* Price */}
           <div className="mt-5 rounded-xl bg-secondary px-4 py-3">
-            <span className="text-xs font-medium text-muted-foreground">Rate</span>
+            <span className="text-xs font-medium text-muted-foreground">Valor</span>
             <p className="mt-0.5 text-xl font-bold text-foreground">{profile.price}</p>
           </div>
 
@@ -158,14 +139,14 @@ function ProfileContent() {
 
           {/* Description */}
           <div className="mt-5">
-            <h3 className="text-sm font-semibold text-foreground">About</h3>
+            <h3 className="text-sm font-semibold text-foreground">Sobre</h3>
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{profile.description}</p>
           </div>
 
           {/* Verified badge */}
           <div className="mt-6 flex items-center gap-2 rounded-lg border border-border bg-card p-3">
             <Shield className="h-4 w-4 text-accent" />
-            <span className="text-xs font-medium text-muted-foreground">Verified profile on GlamClassifieds</span>
+            <span className="text-xs font-medium text-muted-foreground">Perfil publicado após análise</span>
           </div>
 
           {/* CTA */}
@@ -173,7 +154,7 @@ function ProfileContent() {
             to="/"
             className="mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-md transition-all hover:bg-primary/90 hover:shadow-lg active:scale-[0.98]"
           >
-            Contact {profile.name.split(' ')[0]}
+            Contatar {profile.name.split(' ')[0]}
           </Link>
         </div>
       </div>
@@ -185,10 +166,10 @@ function NotFound() {
   return (
     <div className="flex min-h-[60dvh] flex-col items-center justify-center">
       <Star className="h-12 w-12 text-muted-foreground/30" />
-      <h2 className="mt-4 text-lg font-semibold text-foreground">Profile not found</h2>
-      <p className="mt-1 text-sm text-muted-foreground">This profile may have been removed.</p>
+      <h2 className="mt-4 text-lg font-semibold text-foreground">Perfil não encontrado</h2>
+      <p className="mt-1 text-sm text-muted-foreground">Este perfil pode ter sido removido.</p>
       <Link to="/" className="mt-4 text-sm font-medium text-primary hover:underline">
-        Back to directory
+        Voltar ao diretório
       </Link>
     </div>
   )

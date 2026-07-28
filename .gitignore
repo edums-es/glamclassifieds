@@ -8,9 +8,12 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
 dist-ssr
 *.local
+
+# Production secrets and user-generated media
+api/.env
+api/uploads/profiles/
 
 # Editor directories and files
 .vscode/*

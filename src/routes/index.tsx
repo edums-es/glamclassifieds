@@ -1,26 +1,13 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState, useCallback, useEffect } from 'react'
-import { blink } from '@/blink/client'
-import { BlinkClientBoundary } from '@/components/BlinkClientBoundary'
+import { profilesApi, type Profile } from '@/lib/api'
 import { Search, MapPin, Star, Crown, Sparkles, Filter, X, ArrowRight, Plus } from 'lucide-react'
-
-interface Profile {
-  id: string
-  name: string
-  age: number
-  city: string
-  price: string
-  photos: string
-  description: string
-  tags: string
-  is_featured: string
-}
 
 export const Route = createFileRoute('/')({
   head: () => ({
     meta: [
-      { title: 'GlamClassifieds — Premium Model Directory' },
-      { name: 'description', content: 'Discover elite models and companions worldwide. Browse featured profiles, search by city, and connect with the finest talent.' },
+      { title: 'TheSex — Perfis verificados' },
+      { name: 'description', content: 'Perfis publicados com curadoria, privacidade e discrição.' },
     ],
   }),
   component: Home,
@@ -35,15 +22,15 @@ function Home() {
         <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
           <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-1.5 text-sm font-medium text-muted-foreground mb-6">
             <Sparkles className="h-3.5 w-3.5 text-accent" />
-            Premium Model Directory
+            Diretório com curadoria
           </div>
           <h1 className="font-serif text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl text-foreground">
-            Discover <span className="text-primary">Extraordinary</span>
+            Encontre perfis <span className="text-primary">extraordinários</span>
             <br />
-            Companions Worldwide
+            perto de você
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">
-            Browse our curated directory of elite models and companions. Find the perfect match for events, travel, and exclusive experiences.
+            Navegue por perfis publicados, filtre por cidade e encontre experiências com discrição e segurança.
           </p>
           <div className="mx-auto mt-10 flex flex-wrap items-center justify-center gap-3">
             <Link
@@ -51,23 +38,20 @@ function Home() {
               className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-md transition-all hover:bg-primary/90 hover:shadow-lg active:scale-[0.98]"
             >
               <Plus className="h-4 w-4" />
-              List Your Profile
+              Anunciar perfil
             </Link>
             <Link
               to="."
               className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-6 py-3 text-sm font-semibold text-foreground shadow-sm transition-all hover:bg-secondary active:scale-[0.98]"
             >
               <Search className="h-4 w-4" />
-              Browse Profiles
+              Explorar perfis
             </Link>
           </div>
         </div>
       </section>
 
-      {/* Client-only marketplace content (DB reads) */}
-      <BlinkClientBoundary fallback={<MarketplaceSkeleton />}>
-        <MarketplaceContent />
-      </BlinkClientBoundary>
+      <MarketplaceContent />
     </main>
   )
 }
@@ -82,9 +66,7 @@ function MarketplaceContent() {
   const loadProfiles = useCallback(async () => {
     setLoading(true)
     try {
-      const table = blink.db.table<Profile>('profiles')
-      const all = await table.list({ orderBy: { is_featured: 'desc', created_at: 'desc' } })
-      setProfiles(all)
+      setProfiles(await profilesApi.list())
     } catch (err) {
       console.error('Failed to load profiles:', err)
     } finally {
@@ -95,20 +77,18 @@ function MarketplaceContent() {
   useEffect(() => { loadProfiles() }, [loadProfiles])
 
   const cities = [...new Set(profiles.map(p => p.city))].sort()
-  const tags = [...new Set(profiles.flatMap(p => {
-    try { return JSON.parse(p.tags) as string[] } catch { return [] }
-  }))].sort()
+  const tags = [...new Set(profiles.flatMap(p => p.tags))].sort()
 
   const filtered = profiles.filter(p => {
     const q = search.toLowerCase()
     const matchSearch = !q || p.name.toLowerCase().includes(q) || p.city.toLowerCase().includes(q) ||
-      (() => { try { return (JSON.parse(p.tags) as string[]).some((t: string) => t.toLowerCase().includes(q)) } catch { return false } })()
+      p.tags.some(tag => tag.toLowerCase().includes(q))
     const matchCity = !cityFilter || p.city === cityFilter
     return matchSearch && matchCity
   })
 
-  const featured = filtered.filter(p => Number(p.is_featured) > 0)
-  const regular = filtered.filter(p => Number(p.is_featured) === 0)
+  const featured = filtered.filter(p => p.is_featured)
+  const regular = filtered.filter(p => !p.is_featured)
 
   return (
     <>
@@ -120,7 +100,7 @@ function MarketplaceContent() {
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <input
                 type="text"
-                placeholder="Search by name, city, or tag..."
+              placeholder="Busque por nome, cidade ou interesse..."
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 className="w-full rounded-full border border-input bg-card py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
@@ -138,16 +118,16 @@ function MarketplaceContent() {
               }`}
             >
               <Filter className="h-4 w-4" />
-              Filters
+              Filtros
               {cityFilter && <span className="ml-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">1</span>}
             </button>
           </div>
           {showFilters && (
             <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
-              <span className="text-xs font-medium text-muted-foreground">City:</span>
+              <span className="text-xs font-medium text-muted-foreground">Cidade:</span>
               {cityFilter && (
                 <button onClick={() => setCityFilter('')} className="inline-flex items-center gap-1 rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">
-                  <X className="h-3 w-3" /> Clear
+                  <X className="h-3 w-3" /> Limpar
                 </button>
               )}
               {cities.map(city => (
@@ -172,7 +152,7 @@ function MarketplaceContent() {
           <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="mb-6 flex items-center gap-3">
               <Crown className="h-5 w-5 text-accent" />
-              <h2 className="font-serif text-xl font-semibold text-foreground">Featured Profiles</h2>
+              <h2 className="font-serif text-xl font-semibold text-foreground">Perfis em destaque</h2>
             </div>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {featured.map(p => (
@@ -188,7 +168,7 @@ function MarketplaceContent() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="mb-6 flex items-center justify-between">
             <h2 className="font-serif text-xl font-semibold text-foreground">
-              All Profiles <span className="text-sm font-normal text-muted-foreground">({regular.length})</span>
+              Todos os perfis <span className="text-sm font-normal text-muted-foreground">({regular.length})</span>
             </h2>
           </div>
           {loading ? (
@@ -196,9 +176,9 @@ function MarketplaceContent() {
           ) : regular.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-20">
               <Search className="h-10 w-10 text-muted-foreground/40" />
-              <p className="mt-4 text-muted-foreground">No profiles match your search.</p>
+              <p className="mt-4 text-muted-foreground">Nenhum perfil corresponde à busca.</p>
               <button onClick={() => { setSearch(''); setCityFilter('') }} className="mt-2 text-sm font-medium text-primary hover:underline">
-                Clear all filters
+                Limpar filtros
               </button>
             </div>
           ) : (
@@ -215,7 +195,7 @@ function MarketplaceContent() {
       <footer className="border-t border-border bg-card py-8">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
           <p className="text-sm text-muted-foreground">
-            GlamClassifieds — Premium Model Directory. All profiles are independently managed.
+            TheSex — Perfis independentes e publicados após análise.
           </p>
         </div>
       </footer>
@@ -224,12 +204,7 @@ function MarketplaceContent() {
 }
 
 function ProfileCard({ profile, featured }: { profile: Profile; featured?: boolean }) {
-  let photos: string[] = []
-  let profileTags: string[] = []
-  try { photos = JSON.parse(profile.photos) } catch {}
-  try { profileTags = JSON.parse(profile.tags) } catch {}
-
-  const mainPhoto = photos[0] || ''
+  const mainPhoto = profile.photos[0] || ''
 
   return (
     <Link
@@ -240,7 +215,7 @@ function ProfileCard({ profile, featured }: { profile: Profile; featured?: boole
       {/* Featured badge */}
       {featured && (
         <div className="absolute left-3 top-3 z-10 inline-flex items-center gap-1 rounded-full bg-accent px-2.5 py-1 text-[11px] font-bold text-accent-foreground shadow-sm">
-          <Crown className="h-3 w-3" /> Featured
+          <Crown className="h-3 w-3" /> Destaque
         </div>
       )}
       {/* Photo */}
@@ -271,17 +246,17 @@ function ProfileCard({ profile, featured }: { profile: Profile; featured?: boole
           <MapPin className="h-3 w-3" />
           {profile.city}
           <span className="mx-1 opacity-30">·</span>
-          {profile.age} years
+          {profile.age} anos
         </div>
         <div className="mt-1 flex flex-wrap gap-1">
-          {profileTags.slice(0, 3).map(tag => (
+          {profile.tags.slice(0, 3).map(tag => (
             <span key={tag} className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground">
               {tag}
             </span>
           ))}
-          {profileTags.length > 3 && (
+          {profile.tags.length > 3 && (
             <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-              +{profileTags.length - 3}
+              +{profile.tags.length - 3}
             </span>
           )}
         </div>

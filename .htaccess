@@ -1,0 +1,15 @@
+Options -Indexes
+DirectoryIndex dist/index.html
+RewriteEngine On
+
+# Keep the PHP API outside the SPA fallback.
+RewriteRule ^api(?:/|$) - [L]
+
+# Vite emits absolute /assets URLs. The production build lives in /dist.
+RewriteRule ^assets/(.*)$ dist/assets/$1 [L]
+
+# Serve pre-rendered pages when they exist, otherwise let the client router handle it.
+RewriteCond %{DOCUMENT_ROOT}/dist/$1/index.html -f
+RewriteRule ^(.+?)/?$ dist/$1/index.html [L]
+RewriteRule ^$ dist/index.html [L]
+RewriteRule ^.+$ dist/index.html [L]
