@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Check, CircleAlert, Eye, EyeOff, Loader2, LogOut, RefreshCw, ShieldCheck, Star, X } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
-import { adminApi, type Admin, type ModerationProfile, type ProfileStatus } from '@/lib/api'
+import { adminApi, type Admin, type AuditLog, type ModerationProfile, type ProfileStatus } from '@/lib/api'
 
 const STATUS_OPTIONS: { value: ProfileStatus; label: string }[] = [
   { value: 'pending', label: 'Pendentes' },
@@ -27,10 +27,15 @@ function AdminPage() {
   const [passwordVisible, setPasswordVisible] = useState(false)
   const [status, setStatus] = useState<ProfileStatus>('pending')
   const [profiles, setProfiles] = useState<ModerationProfile[]>([])
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
   const [checking, setChecking] = useState(true)
   const [loading, setLoading] = useState(false)
+  const [loadingAudit, setLoadingAudit] = useState(false)
   const [savingId, setSavingId] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [passwordMessage, setPasswordMessage] = useState('')
 
   const loadProfiles = async (requestedStatus = status) => {
     setLoading(true)
@@ -44,10 +49,22 @@ function AdminPage() {
     }
   }
 
+  const loadAudit = async () => {
+    setLoadingAudit(true)
+    try {
+      setAuditLogs(await adminApi.audit())
+    } catch {
+      // The main moderation queue remains usable if the audit feed is unavailable.
+    } finally {
+      setLoadingAudit(false)
+    }
+  }
+
   useEffect(() => {
     adminApi.me()
       .then(currentAdmin => {
         setAdmin(currentAdmin)
+        void loadAudit()
         return loadProfiles('pending')
       })
       .catch(() => setAdmin(null))
@@ -62,6 +79,7 @@ function AdminPage() {
       const currentAdmin = await adminApi.login(email, password)
       setAdmin(currentAdmin)
       setPassword('')
+      void loadAudit()
       await loadProfiles('pending')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível entrar.')
@@ -81,6 +99,7 @@ function AdminPage() {
     try {
       await adminApi.updateProfile(profile.id, { status: nextStatus, is_featured: featured })
       await loadProfiles(status)
+      void loadAudit()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível atualizar o perfil.')
     } finally {
@@ -94,7 +113,29 @@ function AdminPage() {
     } finally {
       setAdmin(null)
       setProfiles([])
+      setAuditLogs([])
       setError('')
+    }
+  }
+
+  const changePassword = async (event: React.FormEvent) => {
+    event.preventDefault()
+    setPasswordMessage('')
+    if (newPassword.length < 12) {
+      setPasswordMessage('A nova senha precisa ter pelo menos 12 caracteres.')
+      return
+    }
+    setLoading(true)
+    try {
+      await adminApi.changePassword(currentPassword, newPassword)
+      setCurrentPassword('')
+      setNewPassword('')
+      setPasswordMessage('Senha atualizada com sucesso.')
+      void loadAudit()
+    } catch (err) {
+      setPasswordMessage(err instanceof Error ? err.message : 'Não foi possível atualizar a senha.')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -170,7 +211,7 @@ function AdminPage() {
       </header>
 
       <section className="mx-auto max-w-6xl px-4 py-7 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap gap-2">
             {STATUS_OPTIONS.map(option => (
               <button key={option.value} type="button" onClick={() => handleStatusChange(option.value)} className={`rounded-full px-3 py-2 text-sm font-medium transition ${status === option.value ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'}`}>
@@ -178,6 +219,26 @@ function AdminPage() {
               </button>
             ))}
           </div>
+
+          <details className="mt-5 rounded-2xl border border-border bg-card p-4">
+            <summary className="cursor-pointer text-sm font-semibold text-foreground">Segurança e últimas ações</summary>
+            <div className="mt-5 grid gap-6 lg:grid-cols-2">
+              <form onSubmit={changePassword} className="space-y-3">
+                <h2 className="text-sm font-semibold text-foreground">Alterar senha</h2>
+                <input type="password" autoComplete="current-password" value={currentPassword} onChange={event => setCurrentPassword(event.target.value)} placeholder="Senha atual" className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20" required />
+                <input type="password" autoComplete="new-password" value={newPassword} onChange={event => setNewPassword(event.target.value)} placeholder="Nova senha (mínimo 12 caracteres)" className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/20" required minLength={12} />
+                {passwordMessage && <p className="text-sm text-muted-foreground">{passwordMessage}</p>}
+                <button type="submit" disabled={loading} className="rounded-full border border-border px-4 py-2 text-sm font-medium text-foreground transition hover:bg-muted disabled:opacity-60">Atualizar senha</button>
+              </form>
+              <div>
+                <div className="flex items-center justify-between gap-3">
+                  <h2 className="text-sm font-semibold text-foreground">Últimas ações</h2>
+                  <button type="button" onClick={loadAudit} className="text-xs font-medium text-primary hover:underline">{loadingAudit ? 'Atualizando…' : 'Atualizar'}</button>
+                </div>
+                {auditLogs.length === 0 ? <p className="mt-3 text-sm text-muted-foreground">Nenhuma ação registrada ainda.</p> : <ul className="mt-3 space-y-2">{auditLogs.slice(0, 5).map((log, index) => <li key={`${log.created_at}-${index}`} className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">{formatAuditLog(log)}</li>)}</ul>}
+              </div>
+            </div>
+          </details>
           <button type="button" onClick={() => loadProfiles()} disabled={loading} className="inline-flex items-center justify-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-foreground transition hover:bg-muted disabled:opacity-60">
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Atualizar
           </button>
@@ -244,6 +305,17 @@ function ActionButton({ children, disabled, onClick, tone }: { children: ReactNo
 
 function ErrorNotice({ message }: { message: string }) {
   return <div className="flex items-start gap-2 rounded-xl border border-destructive/20 bg-destructive/5 px-4 py-3 text-sm text-destructive"><CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />{message}</div>
+}
+
+function formatAuditLog(log: AuditLog) {
+  const when = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(log.created_at.replace(' ', 'T') + 'Z'))
+  if (log.action === 'profile_moderated') {
+    return `${log.admin_email} definiu um perfil como ${String(log.details.status ?? 'atualizado')} em ${when}.`
+  }
+  if (log.action === 'password_changed') {
+    return `${log.admin_email} alterou a senha em ${when}.`
+  }
+  return `${log.admin_email} executou ${log.action} em ${when}.`
 }
 
 function LoadingScreen({ compact = false }: { compact?: boolean }) {

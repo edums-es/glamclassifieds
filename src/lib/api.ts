@@ -23,6 +23,14 @@ export type ModerationProfile = Profile & {
   updated_at: string
 }
 
+export type AuditLog = {
+  action: string
+  profile_id: string | null
+  details: Record<string, unknown>
+  created_at: string
+  admin_email: string
+}
+
 type ApiEnvelope<T> = { data: T }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -94,6 +102,19 @@ export const adminApi = {
 
   async listProfiles(status: ProfileStatus): Promise<ModerationProfile[]> {
     const payload = await request<ApiEnvelope<ModerationProfile[]>>(`/admin/profiles?status=${status}`)
+    return payload.data
+  },
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    await request('/admin/password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    })
+  },
+
+  async audit(): Promise<AuditLog[]> {
+    const payload = await request<ApiEnvelope<AuditLog[]>>('/admin/audit')
     return payload.data
   },
 

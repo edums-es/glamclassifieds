@@ -119,6 +119,17 @@ function api_admin_profile_output(array $profile, array $photos): array
     ]);
 }
 
+function api_audit(PDO $pdo, int $adminId, string $action, ?string $profileId = null, array $details = []): void
+{
+    $statement = $pdo->prepare('INSERT INTO admin_audit_logs (admin_id, action, target_profile_id, details) VALUES (:admin_id, :action, :profile_id, :details)');
+    $statement->execute([
+        'admin_id' => $adminId,
+        'action' => $action,
+        'profile_id' => $profileId,
+        'details' => $details === [] ? null : json_encode($details, JSON_UNESCAPED_UNICODE),
+    ]);
+}
+
 try {
     Config::load(__DIR__ . '/.env');
     $method = strtoupper($_SERVER['REQUEST_METHOD'] ?? 'GET');
@@ -174,6 +185,48 @@ try {
         Response::json(['data' => ['id' => (int) $admin['id'], 'email' => $admin['email']]]);
     }
 
+    if ($method === 'POST' && $path === '/v1/admin/password') {
+        api_validate_same_origin();
+        $admin = api_require_admin($pdo);
+        $body = api_json_body();
+        $currentPassword = (string) ($body['current_password'] ?? '');
+        $newPassword = (string) ($body['new_password'] ?? '');
+        if (strlen($newPassword) < 12) {
+            Response::error('A nova senha precisa ter pelo menos 12 caracteres.', 422);
+        }
+
+        $credentials = $pdo->prepare('SELECT password_hash FROM admins WHERE id = :id LIMIT 1');
+        $credentials->execute(['id' => $admin['id']]);
+        $passwordHash = (string) $credentials->fetchColumn();
+        if (!password_verify($currentPassword, $passwordHash)) {
+            Response::error('A senha atual está incorreta.', 401);
+        }
+
+        $pdo->prepare('UPDATE admins SET password_hash = :password_hash WHERE id = :id')->execute([
+            'password_hash' => password_hash($newPassword, PASSWORD_DEFAULT),
+            'id' => $admin['id'],
+        ]);
+        session_regenerate_id(true);
+        api_audit($pdo, (int) $admin['id'], 'password_changed');
+        Response::json(['data' => ['updated' => true]]);
+    }
+
+    if ($method === 'GET' && $path === '/v1/admin/audit') {
+        api_require_admin($pdo);
+        $statement = $pdo->query('SELECT admin_audit_logs.action, admin_audit_logs.target_profile_id, admin_audit_logs.details, admin_audit_logs.created_at, admins.email AS admin_email FROM admin_audit_logs INNER JOIN admins ON admins.id = admin_audit_logs.admin_id ORDER BY admin_audit_logs.created_at DESC LIMIT 50');
+        $data = array_map(static function (array $row): array {
+            $details = json_decode((string) $row['details'], true);
+            return [
+                'action' => $row['action'],
+                'profile_id' => $row['target_profile_id'],
+                'details' => is_array($details) ? $details : [],
+                'created_at' => $row['created_at'],
+                'admin_email' => $row['admin_email'],
+            ];
+        }, $statement->fetchAll());
+        Response::json(['data' => $data]);
+    }
+
     if ($method === 'GET' && $path === '/v1/admin/profiles') {
         api_require_admin($pdo);
         $status = (string) ($_GET['status'] ?? 'pending');
@@ -196,7 +249,7 @@ try {
 
     if ($method === 'PATCH' && preg_match('#^/v1/admin/profiles/([a-f0-9-]{36})$#i', $path, $matches)) {
         api_validate_same_origin();
-        api_require_admin($pdo);
+        $admin = api_require_admin($pdo);
         $body = api_json_body();
         $allowedStatuses = ['pending', 'active', 'rejected', 'archived'];
         $status = $body['status'] ?? null;
@@ -214,6 +267,11 @@ try {
                 Response::error('Perfil não encontrado.', 404);
             }
         }
+
+        api_audit($pdo, (int) $admin['id'], 'profile_moderated', $matches[1], [
+            'status' => $status,
+            'is_featured' => (bool) $isFeatured,
+        ]);
 
         $profileStatement = $pdo->prepare('SELECT * FROM profiles WHERE id = :id LIMIT 1');
         $profileStatement->execute(['id' => $matches[1]]);

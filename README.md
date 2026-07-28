@@ -9,6 +9,7 @@ Marketplace de perfis com frontend React e API PHP 8/MySQL. A aplicação é des
 - Formulário de envio com 1 a 5 fotos, validação de arquivo e proteção básica contra spam.
 - Perfis enviados entram como `pending` e não ficam visíveis publicamente.
 - Área `/admin` protegida por sessão para analisar, publicar, recusar, arquivar e destacar perfis.
+- Troca de senha administrativa e histórico das ações de moderação.
 - Build estático em `dist/`, pronto para hospedagem compartilhada sem Node no servidor.
 
 ## Banco de dados e primeiro administrador
@@ -35,3 +36,5 @@ O build gera `dist/`, mantido no Git intencionalmente para que um deploy por Git
 ## Publicação futura
 
 A publicação será feita depois dos testes funcionais locais. Para uma hospedagem Apache, a raiz do repositório usa `.htaccess` para servir o React de `dist/` e preservar a API em `/api`.
+
+O roteiro completo de validação está em `docs/roteiro-de-teste.md`.

@@ -36,3 +36,16 @@ CREATE TABLE submission_limits (
     ip_hash CHAR(64) NOT NULL PRIMARY KEY,
     last_submitted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE admin_audit_logs (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    admin_id BIGINT UNSIGNED NOT NULL,
+    action VARCHAR(80) NOT NULL,
+    target_profile_id CHAR(36) NULL,
+    details JSON NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT admin_audit_logs_admin_id_fk FOREIGN KEY (admin_id) REFERENCES admins(id) ON DELETE CASCADE,
+    CONSTRAINT admin_audit_logs_profile_id_fk FOREIGN KEY (target_profile_id) REFERENCES profiles(id) ON DELETE SET NULL,
+    INDEX admin_audit_logs_created_index (created_at),
+    INDEX admin_audit_logs_profile_index (target_profile_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
