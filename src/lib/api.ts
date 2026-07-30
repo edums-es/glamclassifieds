@@ -23,6 +23,18 @@ export type Admin = {
   email: string
 }
 
+export type Member = {
+  id: number
+  email: string
+  display_name: string
+  marketing_opt_in: boolean
+}
+
+export type MemberDashboard = {
+  member: Member
+  counts: Record<ProfileStatus, number>
+}
+
 export type ProfileStatus = 'pending' | 'active' | 'rejected' | 'archived'
 
 export type ModerationProfile = Profile & {
@@ -156,4 +168,21 @@ export const adminApi = {
     })
     return payload.data
   },
+}
+
+export const memberApi = {
+  async register(values: { email: string; password: string; displayName: string; marketingOptIn: boolean; adultConfirmed: boolean }): Promise<Member> {
+    const payload = await request<ApiEnvelope<Member>>('/member/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: values.email, password: values.password, display_name: values.displayName, marketing_opt_in: values.marketingOptIn, adult_confirmed: values.adultConfirmed }) })
+    return payload.data
+  },
+  async login(email: string, password: string): Promise<Member> {
+    const payload = await request<ApiEnvelope<Member>>('/member/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) })
+    return payload.data
+  },
+  async logout(): Promise<void> { await request('/member/logout', { method: 'POST' }) },
+  async me(): Promise<Member> { const payload = await request<ApiEnvelope<Member>>('/member/me'); return payload.data },
+  async dashboard(): Promise<MemberDashboard> { const payload = await request<ApiEnvelope<MemberDashboard>>('/member/dashboard'); return payload.data },
+  async profiles(): Promise<ModerationProfile[]> { const payload = await request<ApiEnvelope<ModerationProfile[]>>('/member/profiles'); return payload.data },
+  async updateSettings(values: { displayName: string; marketingOptIn: boolean }): Promise<Member> { const payload = await request<ApiEnvelope<Member>>('/member/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ display_name: values.displayName, marketing_opt_in: values.marketingOptIn }) }); return payload.data },
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> { await request('/member/password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }) }) },
 }

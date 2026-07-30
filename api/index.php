@@ -122,6 +122,57 @@ function api_profile_output(array $profile, array $photos): array
     ];
 }
 
+function api_start_member_session(): void
+{
+    if (session_status() === PHP_SESSION_ACTIVE) {
+        return;
+    }
+
+    $isSecure = str_starts_with(Config::get('APP_URL', '') ?? '', 'https://');
+    session_name('thesex_member');
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path' => '/api/',
+        'secure' => $isSecure,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    session_start();
+}
+
+function api_require_member(PDO $pdo): array
+{
+    api_start_member_session();
+    $memberId = filter_var($_SESSION['member_id'] ?? null, FILTER_VALIDATE_INT);
+    if (!$memberId) {
+        Response::error('Autenticação necessária.', 401);
+    }
+
+    $statement = $pdo->prepare('SELECT id, email, display_name, marketing_opt_in, created_at FROM members WHERE id = :id LIMIT 1');
+    $statement->execute(['id' => $memberId]);
+    $member = $statement->fetch();
+    if (!$member) {
+        $_SESSION = [];
+        session_destroy();
+        Response::error('Sessão expirada.', 401);
+    }
+
+    return $member;
+}
+
+function api_optional_member(PDO $pdo): ?array
+{
+    api_start_member_session();
+    $memberId = filter_var($_SESSION['member_id'] ?? null, FILTER_VALIDATE_INT);
+    if (!$memberId) {
+        return null;
+    }
+
+    $statement = $pdo->prepare('SELECT id, email, display_name, marketing_opt_in, created_at FROM members WHERE id = :id LIMIT 1');
+    $statement->execute(['id' => $memberId]);
+    return $statement->fetch() ?: null;
+}
+
 function api_migrate_profiles(PDO $pdo): void
 {
     static $migrated = false;
@@ -148,6 +199,30 @@ function api_migrate_profiles(PDO $pdo): void
         }
     }
 
+    $migrated = true;
+}
+
+function api_migrate_members(PDO $pdo): void
+{
+    static $migrated = false;
+    if ($migrated) {
+        return;
+    }
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS members (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        email VARCHAR(190) NOT NULL UNIQUE,
+        password_hash VARCHAR(255) NOT NULL,
+        display_name VARCHAR(80) NULL,
+        marketing_opt_in TINYINT(1) NOT NULL DEFAULT 0,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $columns = $pdo->query('SHOW COLUMNS FROM profiles')->fetchAll(PDO::FETCH_COLUMN);
+    if (!in_array('member_id', $columns, true)) {
+        $pdo->exec('ALTER TABLE profiles ADD COLUMN member_id BIGINT UNSIGNED NULL AFTER id');
+    }
     $migrated = true;
 }
 
@@ -187,10 +262,123 @@ try {
     }
 
     $pdo = Database::connect();
+    api_migrate_members($pdo);
     api_migrate_profiles($pdo);
 
     if (str_starts_with($path, '/v1/admin/')) {
         api_start_admin_session();
+    }
+    if (str_starts_with($path, '/v1/member/')) {
+        api_start_member_session();
+    }
+
+    if ($method === 'POST' && $path === '/v1/member/register') {
+        api_validate_same_origin();
+        $body = api_json_body();
+        $email = strtolower(trim((string) ($body['email'] ?? '')));
+        $password = (string) ($body['password'] ?? '');
+        $displayName = trim((string) ($body['display_name'] ?? ''));
+        $marketingOptIn = !empty($body['marketing_opt_in']) ? 1 : 0;
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($password) < 12 || mb_strlen($displayName) > 80 || empty($body['adult_confirmed'])) {
+            Response::error('Informe e-mail, senha de pelo menos 12 caracteres e confirme a maioridade.', 422);
+        }
+        try {
+            $statement = $pdo->prepare('INSERT INTO members (email, password_hash, display_name, marketing_opt_in) VALUES (:email, :password_hash, :display_name, :marketing_opt_in)');
+            $statement->execute(['email' => $email, 'password_hash' => password_hash($password, PASSWORD_DEFAULT), 'display_name' => $displayName ?: null, 'marketing_opt_in' => $marketingOptIn]);
+        } catch (PDOException $exception) {
+            if ($exception->getCode() === '23000') {
+                Response::error('Já existe uma conta com este e-mail.', 409);
+            }
+            throw $exception;
+        }
+        session_regenerate_id(true);
+        $_SESSION['member_id'] = (int) $pdo->lastInsertId();
+        Response::json(['data' => ['id' => (int) $_SESSION['member_id'], 'email' => $email, 'display_name' => $displayName, 'marketing_opt_in' => (bool) $marketingOptIn]], 201);
+    }
+
+    if ($method === 'POST' && $path === '/v1/member/login') {
+        api_validate_same_origin();
+        $body = api_json_body();
+        $email = strtolower(trim((string) ($body['email'] ?? '')));
+        $password = (string) ($body['password'] ?? '');
+        $statement = $pdo->prepare('SELECT id, email, password_hash, display_name, marketing_opt_in FROM members WHERE email = :email LIMIT 1');
+        $statement->execute(['email' => $email]);
+        $member = $statement->fetch();
+        if (!$member || !password_verify($password, $member['password_hash'])) {
+            Response::error('E-mail ou senha inválidos.', 401);
+        }
+        session_regenerate_id(true);
+        $_SESSION['member_id'] = (int) $member['id'];
+        Response::json(['data' => ['id' => (int) $member['id'], 'email' => $member['email'], 'display_name' => $member['display_name'] ?? '', 'marketing_opt_in' => (bool) $member['marketing_opt_in']]]);
+    }
+
+    if ($method === 'POST' && $path === '/v1/member/logout') {
+        api_validate_same_origin();
+        api_require_member($pdo);
+        $_SESSION = [];
+        session_destroy();
+        Response::json(['data' => ['signed_out' => true]]);
+    }
+
+    if ($method === 'GET' && $path === '/v1/member/me') {
+        $member = api_require_member($pdo);
+        Response::json(['data' => ['id' => (int) $member['id'], 'email' => $member['email'], 'display_name' => $member['display_name'] ?? '', 'marketing_opt_in' => (bool) $member['marketing_opt_in']]]);
+    }
+
+    if ($method === 'GET' && $path === '/v1/member/dashboard') {
+        $member = api_require_member($pdo);
+        $counts = ['pending' => 0, 'active' => 0, 'rejected' => 0, 'archived' => 0];
+        $statement = $pdo->prepare('SELECT status, COUNT(*) AS total FROM profiles WHERE member_id = :member_id GROUP BY status');
+        $statement->execute(['member_id' => $member['id']]);
+        foreach ($statement->fetchAll() as $row) {
+            $counts[$row['status']] = (int) $row['total'];
+        }
+        Response::json(['data' => ['member' => ['id' => (int) $member['id'], 'email' => $member['email'], 'display_name' => $member['display_name'] ?? '', 'marketing_opt_in' => (bool) $member['marketing_opt_in']], 'counts' => $counts]]);
+    }
+
+    if ($method === 'GET' && $path === '/v1/member/profiles') {
+        $member = api_require_member($pdo);
+        $statement = $pdo->prepare('SELECT * FROM profiles WHERE member_id = :member_id ORDER BY created_at DESC LIMIT 100');
+        $statement->execute(['member_id' => $member['id']]);
+        $photoStatement = $pdo->prepare('SELECT path FROM profile_photos WHERE profile_id = :profile_id ORDER BY position ASC');
+        $data = [];
+        foreach ($statement->fetchAll() as $profile) {
+            $photoStatement->execute(['profile_id' => $profile['id']]);
+            $data[] = api_admin_profile_output($profile, $photoStatement->fetchAll());
+        }
+        Response::json(['data' => $data]);
+    }
+
+    if ($method === 'PATCH' && $path === '/v1/member/settings') {
+        api_validate_same_origin();
+        $member = api_require_member($pdo);
+        $body = api_json_body();
+        $displayName = trim((string) ($body['display_name'] ?? ''));
+        if (mb_strlen($displayName) > 80) {
+            Response::error('O nome de exibição é muito longo.', 422);
+        }
+        $marketingOptIn = !empty($body['marketing_opt_in']) ? 1 : 0;
+        $pdo->prepare('UPDATE members SET display_name = :display_name, marketing_opt_in = :marketing_opt_in WHERE id = :id')->execute(['display_name' => $displayName ?: null, 'marketing_opt_in' => $marketingOptIn, 'id' => $member['id']]);
+        Response::json(['data' => ['id' => (int) $member['id'], 'email' => $member['email'], 'display_name' => $displayName, 'marketing_opt_in' => (bool) $marketingOptIn]]);
+    }
+
+    if ($method === 'POST' && $path === '/v1/member/password') {
+        api_validate_same_origin();
+        $member = api_require_member($pdo);
+        $body = api_json_body();
+        $currentPassword = (string) ($body['current_password'] ?? '');
+        $newPassword = (string) ($body['new_password'] ?? '');
+        if (strlen($newPassword) < 12) {
+            Response::error('A nova senha precisa ter pelo menos 12 caracteres.', 422);
+        }
+        $statement = $pdo->prepare('SELECT password_hash FROM members WHERE id = :id LIMIT 1');
+        $statement->execute(['id' => $member['id']]);
+        if (!password_verify($currentPassword, (string) $statement->fetchColumn())) {
+            Response::error('A senha atual está incorreta.', 401);
+        }
+        $pdo->prepare('UPDATE members SET password_hash = :password_hash WHERE id = :id')->execute(['password_hash' => password_hash($newPassword, PASSWORD_DEFAULT), 'id' => $member['id']]);
+        session_regenerate_id(true);
+        Response::json(['data' => ['updated' => true]]);
     }
 
     if ($method === 'POST' && $path === '/v1/admin/login') {
@@ -370,6 +558,7 @@ try {
 
     if ($method === 'POST' && $path === '/v1/profiles') {
         api_validate_same_origin();
+        $member = api_optional_member($pdo);
         $name = trim((string) ($_POST['name'] ?? ''));
         $age = filter_var($_POST['age'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 18, 'max_range' => 99]]);
         $city = trim((string) ($_POST['city'] ?? ''));
@@ -447,8 +636,8 @@ try {
             }
 
             $pdo->beginTransaction();
-            $profile = $pdo->prepare('INSERT INTO profiles (id, display_name, age, category, city, neighborhood, price_label, contact_phone, availability, services, service_for, meeting_places, payment_methods, description, tags, submitted_ip_hash) VALUES (:id, :name, :age, :category, :city, :neighborhood, :price, :contact_phone, :availability, :services, :service_for, :meeting_places, :payment_methods, :description, :tags, :ip_hash)');
-            $profile->execute(['id' => $id, 'name' => $name, 'age' => $age, 'category' => $category, 'city' => $city, 'neighborhood' => $neighborhood ?: null, 'price' => $price, 'contact_phone' => $contactPhone, 'availability' => $availability ?: null, 'services' => json_encode(array_values($services), JSON_UNESCAPED_UNICODE), 'service_for' => json_encode(array_values($serviceFor), JSON_UNESCAPED_UNICODE), 'meeting_places' => json_encode(array_values($meetingPlaces), JSON_UNESCAPED_UNICODE), 'payment_methods' => json_encode(array_values($paymentMethods), JSON_UNESCAPED_UNICODE), 'description' => $description, 'tags' => json_encode(array_values($tags), JSON_UNESCAPED_UNICODE), 'ip_hash' => $ipHash]);
+            $profile = $pdo->prepare('INSERT INTO profiles (id, member_id, display_name, age, category, city, neighborhood, price_label, contact_phone, availability, services, service_for, meeting_places, payment_methods, description, tags, submitted_ip_hash) VALUES (:id, :member_id, :name, :age, :category, :city, :neighborhood, :price, :contact_phone, :availability, :services, :service_for, :meeting_places, :payment_methods, :description, :tags, :ip_hash)');
+            $profile->execute(['id' => $id, 'member_id' => $member['id'] ?? null, 'name' => $name, 'age' => $age, 'category' => $category, 'city' => $city, 'neighborhood' => $neighborhood ?: null, 'price' => $price, 'contact_phone' => $contactPhone, 'availability' => $availability ?: null, 'services' => json_encode(array_values($services), JSON_UNESCAPED_UNICODE), 'service_for' => json_encode(array_values($serviceFor), JSON_UNESCAPED_UNICODE), 'meeting_places' => json_encode(array_values($meetingPlaces), JSON_UNESCAPED_UNICODE), 'payment_methods' => json_encode(array_values($paymentMethods), JSON_UNESCAPED_UNICODE), 'description' => $description, 'tags' => json_encode(array_values($tags), JSON_UNESCAPED_UNICODE), 'ip_hash' => $ipHash]);
             $photo = $pdo->prepare('INSERT INTO profile_photos (profile_id, path, position) VALUES (:profile_id, :path, :position)');
             foreach ($paths as $position => $filePath) {
                 $photo->execute(['profile_id' => $id, 'path' => $filePath, 'position' => $position]);
