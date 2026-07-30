@@ -5,6 +5,9 @@ RewriteEngine On
 # Keep the PHP API outside the SPA fallback.
 RewriteRule ^api(?:/|$) - [L]
 
+# The one-time installer is a PHP page, not a client-side route.
+RewriteRule ^install(?:/|$) - [L]
+
 # Vite emits absolute /assets URLs. The production build lives in /dist.
 RewriteRule ^assets/(.*)$ dist/assets/$1 [L]
 

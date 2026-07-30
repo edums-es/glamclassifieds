@@ -13,6 +13,7 @@ dist-ssr
 
 # Production secrets and user-generated media
 api/.env
+api/.installed
 api/uploads/profiles/
 
 # Editor directories and files

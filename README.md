@@ -12,17 +12,15 @@ Marketplace de perfis com frontend React e API PHP 8/MySQL. A aplicação é des
 - Troca de senha administrativa e histórico das ações de moderação.
 - Build estático em `dist/`, pronto para hospedagem compartilhada sem Node no servidor.
 
-## Banco de dados e primeiro administrador
+## Instalação na hospedagem
 
-1. Importe `database/schema.sql` em um banco MySQL vazio.
-2. Copie `api/.env.example` para `api/.env` e preencha as credenciais do banco.
-3. Crie o primeiro acesso administrativo pelo terminal, a partir da raiz do repositório:
+1. Crie um banco MySQL vazio no painel da hospedagem.
+2. Faça o deploy dos arquivos e abra `/install`.
+3. Informe as credenciais do banco e o e-mail/senha do primeiro administrador.
 
-```bash
-php api/scripts/create_admin.php admin@exemplo.com uma-senha-forte-com-12-caracteres
-```
+O instalador grava `api/.env`, cria as tabelas, prepara os uploads e se bloqueia após concluir. Esse arquivo não entra no Git.
 
-O script é somente de linha de comando e a pasta `api/scripts` é bloqueada para acesso web. Depois, acesse `/admin` e use esse e-mail e senha.
+Como alternativa para ambientes já configurados, o script CLI `api/scripts/create_admin.php` cria um novo administrador pelo terminal. A pasta de scripts é bloqueada para acesso web.
 
 ## Desenvolvimento
 

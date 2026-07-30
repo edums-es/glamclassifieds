@@ -4,16 +4,9 @@ Este roteiro confirma o fluxo principal antes da publicação. Faça-o em um amb
 
 ## Preparação
 
-1. Importe `database/schema.sql` em um banco vazio.
-2. Copie `api/.env.example` para `api/.env` e preencha os dados do banco.
-3. Garanta escrita para `api/uploads/`.
-4. Crie um acesso administrativo:
-
-```bash
-php api/scripts/create_admin.php admin@exemplo.com uma-senha-forte-com-12-caracteres
-```
-
-5. Confirme que `GET /api/v1/health` responde com `{"status":"ok"}`.
+1. Crie um banco MySQL vazio e garanta escrita para `api/uploads/`.
+2. Abra `/install`, informe os dados do banco e defina o primeiro acesso administrativo.
+3. Confirme que `GET /api/v1/health` responde com `{"status":"ok"}`.
 
 ## Fluxo principal
 

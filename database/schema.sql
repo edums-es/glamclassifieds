@@ -1,11 +1,11 @@
-CREATE TABLE admins (
+CREATE TABLE IF NOT EXISTS admins (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     email VARCHAR(190) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE profiles (
+CREATE TABLE IF NOT EXISTS profiles (
     id CHAR(36) NOT NULL PRIMARY KEY,
     display_name VARCHAR(80) NOT NULL,
     age TINYINT UNSIGNED NOT NULL,
@@ -22,7 +22,7 @@ CREATE TABLE profiles (
     INDEX profiles_city_index (city)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE profile_photos (
+CREATE TABLE IF NOT EXISTS profile_photos (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     profile_id CHAR(36) NOT NULL,
     path VARCHAR(255) NOT NULL,
@@ -32,12 +32,12 @@ CREATE TABLE profile_photos (
     INDEX profile_photos_profile_index (profile_id, position)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE submission_limits (
+CREATE TABLE IF NOT EXISTS submission_limits (
     ip_hash CHAR(64) NOT NULL PRIMARY KEY,
     last_submitted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE admin_audit_logs (
+CREATE TABLE IF NOT EXISTS admin_audit_logs (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     admin_id BIGINT UNSIGNED NOT NULL,
     action VARCHAR(80) NOT NULL,
