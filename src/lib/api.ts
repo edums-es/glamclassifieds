@@ -2,8 +2,12 @@ export type Profile = {
   id: string
   name: string
   age: number
+  category: string
   city: string
+  neighborhood: string
   price: string
+  contact_phone: string
+  availability: string
   photos: string[]
   description: string
   tags: string[]
@@ -62,19 +66,29 @@ export const profilesApi = {
   async submit(values: {
     name: string
     age: string
+    category: string
     city: string
+    neighborhood: string
     price: string
+    contactPhone: string
+    availability: string
     description: string
     tags: string[]
     photos: File[]
+    adultConfirmed: boolean
   }): Promise<void> {
     const body = new FormData()
     body.set('name', values.name)
     body.set('age', values.age)
+    body.set('category', values.category)
     body.set('city', values.city)
+    body.set('neighborhood', values.neighborhood)
     body.set('price', values.price)
+    body.set('contact_phone', values.contactPhone)
+    body.set('availability', values.availability)
     body.set('description', values.description)
     body.set('tags', JSON.stringify(values.tags))
+    body.set('adult_confirmed', String(values.adultConfirmed))
     values.photos.forEach(photo => body.append('photos[]', photo))
 
     await request('/profiles', { method: 'POST', body })

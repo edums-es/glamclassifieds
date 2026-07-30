@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useState, useEffect, useCallback } from 'react'
 import { profilesApi, type Profile } from '@/lib/api'
-import { ArrowLeft, MapPin, Star, Shield, Heart, Share2, Crown } from 'lucide-react'
+import { ArrowLeft, MapPin, Star, Shield, Heart, Share2, Crown, Phone, Clock3 } from 'lucide-react'
 
 export const Route = createFileRoute('/profile/$id')({
   head: ({ params }) => ({
@@ -99,10 +99,11 @@ function ProfileContent() {
         <div className="rounded-2xl border border-border bg-card p-6">
           <div className="flex items-start justify-between">
             <div>
-              <h1 className="font-serif text-2xl font-bold text-foreground">{profile.name}</h1>
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-primary">{profile.category}</p>
+              <h1 className="mt-1 font-serif text-2xl font-bold text-foreground">{profile.name}</h1>
               <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
                 <MapPin className="h-3.5 w-3.5" />
-                {profile.city}
+                {profile.city}{profile.neighborhood ? ` · ${profile.neighborhood}` : ''}
                 <span className="opacity-30">·</span>
                 {profile.age} anos
               </div>
@@ -143,6 +144,8 @@ function ProfileContent() {
             <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{profile.description}</p>
           </div>
 
+          {profile.availability && <div className="mt-5 flex items-center gap-2 text-sm text-muted-foreground"><Clock3 className="h-4 w-4 text-primary" /> {profile.availability}</div>}
+
           {/* Verified badge */}
           <div className="mt-6 flex items-center gap-2 rounded-lg border border-border bg-card p-3">
             <Shield className="h-4 w-4 text-accent" />
@@ -150,12 +153,7 @@ function ProfileContent() {
           </div>
 
           {/* CTA */}
-          <Link
-            to="/"
-            className="mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-md transition-all hover:bg-primary/90 hover:shadow-lg active:scale-[0.98]"
-          >
-            Contatar {profile.name.split(' ')[0]}
-          </Link>
+          {profile.contact_phone ? <a href={`https://wa.me/${profile.contact_phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-md transition-all hover:bg-primary/90 hover:shadow-lg active:scale-[0.98]"><Phone className="h-4 w-4" /> Contatar {profile.name.split(' ')[0]}</a> : <Link to="/" className="mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-md transition-all hover:bg-primary/90 hover:shadow-lg active:scale-[0.98]">Voltar à vitrine</Link>}
         </div>
       </div>
     </div>

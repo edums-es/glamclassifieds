@@ -101,13 +101,42 @@ function api_profile_output(array $profile, array $photos): array
         'id' => $profile['id'],
         'name' => $profile['display_name'],
         'age' => (int) $profile['age'],
+        'category' => $profile['category'] ?? 'Acompanhante',
         'city' => $profile['city'],
+        'neighborhood' => $profile['neighborhood'] ?? '',
         'price' => $profile['price_label'],
+        'contact_phone' => $profile['contact_phone'] ?? '',
+        'availability' => $profile['availability'] ?? '',
         'description' => $profile['description'] ?? '',
         'tags' => is_array($tags) ? array_values($tags) : [],
         'photos' => array_map(static fn(array $photo): string => '/api/' . ltrim($photo['path'], '/'), $photos),
         'is_featured' => (bool) $profile['is_featured'],
     ];
+}
+
+function api_migrate_profiles(PDO $pdo): void
+{
+    static $migrated = false;
+    if ($migrated) {
+        return;
+    }
+
+    $columns = $pdo->query('SHOW COLUMNS FROM profiles')->fetchAll(PDO::FETCH_COLUMN);
+    $columns = array_flip($columns);
+    $changes = [
+        'category' => "ADD COLUMN category VARCHAR(50) NOT NULL DEFAULT 'Acompanhante' AFTER age",
+        'neighborhood' => 'ADD COLUMN neighborhood VARCHAR(120) NULL AFTER city',
+        'contact_phone' => 'ADD COLUMN contact_phone VARCHAR(40) NULL AFTER price_label',
+        'availability' => 'ADD COLUMN availability VARCHAR(160) NULL AFTER contact_phone',
+    ];
+
+    foreach ($changes as $column => $statement) {
+        if (!isset($columns[$column])) {
+            $pdo->exec("ALTER TABLE profiles {$statement}");
+        }
+    }
+
+    $migrated = true;
 }
 
 function api_admin_profile_output(array $profile, array $photos): array
@@ -146,6 +175,7 @@ try {
     }
 
     $pdo = Database::connect();
+    api_migrate_profiles($pdo);
 
     if (str_starts_with($path, '/v1/admin/')) {
         api_start_admin_session();
@@ -326,7 +356,11 @@ try {
         $name = trim((string) ($_POST['name'] ?? ''));
         $age = filter_var($_POST['age'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 18, 'max_range' => 99]]);
         $city = trim((string) ($_POST['city'] ?? ''));
+        $category = trim((string) ($_POST['category'] ?? 'Acompanhante'));
+        $neighborhood = trim((string) ($_POST['neighborhood'] ?? ''));
         $price = trim((string) ($_POST['price'] ?? ''));
+        $contactPhone = trim((string) ($_POST['contact_phone'] ?? ''));
+        $availability = trim((string) ($_POST['availability'] ?? ''));
         $description = trim((string) ($_POST['description'] ?? ''));
         $tags = json_decode((string) ($_POST['tags'] ?? '[]'), true);
         $honeypot = trim((string) ($_POST['website'] ?? ''));
@@ -334,7 +368,8 @@ try {
         if ($honeypot !== '') {
             Response::json(['message' => 'Solicitação recebida.'], 201);
         }
-        if ($name === '' || mb_strlen($name) > 80 || !$age || $city === '' || mb_strlen($city) > 120 || $price === '' || mb_strlen($price) > 80 || mb_strlen($description) > 2000 || !is_array($tags) || count($tags) > 12) {
+        $allowedCategories = ['Acompanhante', 'Massagem', 'Trans e Travesti', 'Encontro casual', 'Modelo independente'];
+        if ($name === '' || mb_strlen($name) > 80 || !$age || $city === '' || mb_strlen($city) > 120 || !in_array($category, $allowedCategories, true) || mb_strlen($neighborhood) > 120 || $price === '' || mb_strlen($price) > 80 || mb_strlen($contactPhone) < 8 || mb_strlen($contactPhone) > 40 || mb_strlen($availability) > 160 || mb_strlen($description) > 2000 || !is_array($tags) || count($tags) > 12 || ($_POST['adult_confirmed'] ?? '') !== 'true') {
             Response::error('Verifique os campos obrigatórios do perfil.', 422);
         }
 
@@ -379,8 +414,8 @@ try {
             }
 
             $pdo->beginTransaction();
-            $profile = $pdo->prepare('INSERT INTO profiles (id, display_name, age, city, price_label, description, tags, submitted_ip_hash) VALUES (:id, :name, :age, :city, :price, :description, :tags, :ip_hash)');
-            $profile->execute(['id' => $id, 'name' => $name, 'age' => $age, 'city' => $city, 'price' => $price, 'description' => $description, 'tags' => json_encode(array_values($tags), JSON_UNESCAPED_UNICODE), 'ip_hash' => $ipHash]);
+            $profile = $pdo->prepare('INSERT INTO profiles (id, display_name, age, category, city, neighborhood, price_label, contact_phone, availability, description, tags, submitted_ip_hash) VALUES (:id, :name, :age, :category, :city, :neighborhood, :price, :contact_phone, :availability, :description, :tags, :ip_hash)');
+            $profile->execute(['id' => $id, 'name' => $name, 'age' => $age, 'category' => $category, 'city' => $city, 'neighborhood' => $neighborhood ?: null, 'price' => $price, 'contact_phone' => $contactPhone, 'availability' => $availability ?: null, 'description' => $description, 'tags' => json_encode(array_values($tags), JSON_UNESCAPED_UNICODE), 'ip_hash' => $ipHash]);
             $photo = $pdo->prepare('INSERT INTO profile_photos (profile_id, path, position) VALUES (:profile_id, :path, :position)');
             foreach ($paths as $position => $filePath) {
                 $photo->execute(['profile_id' => $id, 'path' => $filePath, 'position' => $position]);

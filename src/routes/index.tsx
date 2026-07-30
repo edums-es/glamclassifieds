@@ -1,289 +1,47 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useState, useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { profilesApi, type Profile } from '@/lib/api'
-import { Search, MapPin, Star, Crown, Sparkles, Filter, X, ArrowRight, Plus } from 'lucide-react'
+import { ArrowRight, BadgeCheck, CheckCircle2, ChevronRight, MapPin, Menu, Search, ShieldCheck, Sparkles, X } from 'lucide-react'
+
+const DISCOVER = [
+  { title: 'Acompanhantes', text: 'Perfís independentes para encontros com discrição e estilo.', tone: 'from-rose-500 to-pink-600' },
+  { title: 'Massagens', text: 'Bem-estar, relaxamento e experiências personalizadas.', tone: 'from-violet-500 to-fuchsia-600' },
+  { title: 'Trans e Travesti', text: 'Perfis verificados em várias cidades do Brasil.', tone: 'from-sky-500 to-indigo-600' },
+  { title: 'Encontros casuais', text: 'Conexões para viver bons momentos, no seu ritmo.', tone: 'from-orange-500 to-rose-500' },
+]
+const CITY_LINKS = ['São Paulo', 'Rio de Janeiro', 'Belo Horizonte', 'Curitiba', 'Brasília', 'Salvador']
 
 export const Route = createFileRoute('/')({
-  head: () => ({
-    meta: [
-      { title: 'TheSex — Perfis verificados' },
-      { name: 'description', content: 'Perfis publicados com curadoria, privacidade e discrição.' },
-    ],
-  }),
+  head: () => ({ meta: [{ title: 'TheSex — Perfis independentes' }, { name: 'description', content: 'Encontre perfis independentes por cidade, categoria e disponibilidade.' }] }),
   component: Home,
 })
 
 function Home() {
-  return (
-    <main className="min-h-dvh bg-background">
-      {/* Hero */}
-      <section className="relative overflow-hidden pt-24 pb-16 lg:pt-32 lg:pb-24">
-        <div className="absolute inset-0 bg-gradient-to-b from-primary/5 to-transparent" />
-        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
-          <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-4 py-1.5 text-sm font-medium text-muted-foreground mb-6">
-            <Sparkles className="h-3.5 w-3.5 text-accent" />
-            Diretório com curadoria
-          </div>
-          <h1 className="font-serif text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl text-foreground">
-            Encontre perfis <span className="text-primary">extraordinários</span>
-            <br />
-            perto de você
-          </h1>
-          <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground">
-            Navegue por perfis publicados, filtre por cidade e encontre experiências com discrição e segurança.
-          </p>
-          <div className="mx-auto mt-10 flex flex-wrap items-center justify-center gap-3">
-            <Link
-              to="/create"
-              className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-md transition-all hover:bg-primary/90 hover:shadow-lg active:scale-[0.98]"
-            >
-              <Plus className="h-4 w-4" />
-              Anunciar perfil
-            </Link>
-            <Link
-              to="."
-              className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-6 py-3 text-sm font-semibold text-foreground shadow-sm transition-all hover:bg-secondary active:scale-[0.98]"
-            >
-              <Search className="h-4 w-4" />
-              Explorar perfis
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      <MarketplaceContent />
-    </main>
-  )
-}
-
-function MarketplaceContent() {
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [cityFilter, setCityFilter] = useState('')
-  const [showFilters, setShowFilters] = useState(false)
+  const [query, setQuery] = useState('')
+  const [selectedCity, setSelectedCity] = useState('')
+  const loadProfiles = useCallback(async () => { try { setProfiles(await profilesApi.list()) } finally { setLoading(false) } }, [])
+  useEffect(() => { void loadProfiles() }, [loadProfiles])
 
-  const loadProfiles = useCallback(async () => {
-    setLoading(true)
-    try {
-      setProfiles(await profilesApi.list())
-    } catch (err) {
-      console.error('Failed to load profiles:', err)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { loadProfiles() }, [loadProfiles])
-
-  const cities = [...new Set(profiles.map(p => p.city))].sort()
-  const tags = [...new Set(profiles.flatMap(p => p.tags))].sort()
-
-  const filtered = profiles.filter(p => {
-    const q = search.toLowerCase()
-    const matchSearch = !q || p.name.toLowerCase().includes(q) || p.city.toLowerCase().includes(q) ||
-      p.tags.some(tag => tag.toLowerCase().includes(q))
-    const matchCity = !cityFilter || p.city === cityFilter
-    return matchSearch && matchCity
+  const cities = useMemo(() => [...new Set([...CITY_LINKS, ...profiles.map(profile => profile.city)])], [profiles])
+  const visibleProfiles = profiles.filter(profile => {
+    const search = query.trim().toLowerCase()
+    return (!selectedCity || profile.city === selectedCity) && (!search || [profile.name, profile.city, profile.category, profile.neighborhood, ...profile.tags].join(' ').toLowerCase().includes(search))
   })
+  const featured = visibleProfiles.filter(profile => profile.is_featured)
 
-  const featured = filtered.filter(p => p.is_featured)
-  const regular = filtered.filter(p => !p.is_featured)
-
-  return (
-    <>
-      {/* Search + Filter Bar */}
-      <section className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur-md">
-        <div className="mx-auto max-w-7xl px-4 py-3 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <input
-                type="text"
-              placeholder="Busque por nome, cidade ou interesse..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="w-full rounded-full border border-input bg-card py-2.5 pl-10 pr-4 text-sm text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
-              />
-              {search && (
-                <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2">
-                  <X className="h-4 w-4 text-muted-foreground hover:text-foreground" />
-                </button>
-              )}
-            </div>
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-medium transition-all ${
-                cityFilter ? 'border-primary bg-primary/10 text-primary' : 'border-border bg-card text-foreground hover:bg-secondary'
-              }`}
-            >
-              <Filter className="h-4 w-4" />
-              Filtros
-              {cityFilter && <span className="ml-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">1</span>}
-            </button>
-          </div>
-          {showFilters && (
-            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
-              <span className="text-xs font-medium text-muted-foreground">Cidade:</span>
-              {cityFilter && (
-                <button onClick={() => setCityFilter('')} className="inline-flex items-center gap-1 rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">
-                  <X className="h-3 w-3" /> Limpar
-                </button>
-              )}
-              {cities.map(city => (
-                <button
-                  key={city}
-                  onClick={() => setCityFilter(city === cityFilter ? '' : city)}
-                  className={`rounded-full border px-3 py-1 text-xs font-medium transition-all ${
-                    city === cityFilter ? 'border-primary bg-primary text-primary-foreground' : 'border-border bg-card text-muted-foreground hover:border-primary/50 hover:text-foreground'
-                  }`}
-                >
-                  {city}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* Featured Row */}
-      {featured.length > 0 && (
-        <section className="py-8">
-          <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-            <div className="mb-6 flex items-center gap-3">
-              <Crown className="h-5 w-5 text-accent" />
-              <h2 className="font-serif text-xl font-semibold text-foreground">Perfis em destaque</h2>
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {featured.map(p => (
-                <ProfileCard key={p.id} profile={p} featured />
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
-
-      {/* All Profiles Grid */}
-      <section className="py-8">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="mb-6 flex items-center justify-between">
-            <h2 className="font-serif text-xl font-semibold text-foreground">
-              Todos os perfis <span className="text-sm font-normal text-muted-foreground">({regular.length})</span>
-            </h2>
-          </div>
-          {loading ? (
-            <MarketplaceSkeleton />
-          ) : regular.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-20">
-              <Search className="h-10 w-10 text-muted-foreground/40" />
-              <p className="mt-4 text-muted-foreground">Nenhum perfil corresponde à busca.</p>
-              <button onClick={() => { setSearch(''); setCityFilter('') }} className="mt-2 text-sm font-medium text-primary hover:underline">
-                Limpar filtros
-              </button>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {regular.map(p => (
-                <ProfileCard key={p.id} profile={p} />
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="border-t border-border bg-card py-8">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
-          <p className="text-sm text-muted-foreground">
-            TheSex — Perfis independentes e publicados após análise.
-          </p>
-        </div>
-      </footer>
-    </>
-  )
+  return <main className="min-h-dvh bg-[#fffafb] text-slate-900">
+    <header className="border-b border-slate-100 bg-white"><div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-4 sm:px-6"><Link to="/" className="text-xl font-black tracking-tight text-pink-600">the<span className="text-slate-900">sex</span></Link><nav className="hidden items-center gap-6 text-sm font-bold text-slate-600 md:flex"><a href="#categorias" className="hover:text-pink-600">Categorias</a><a href="#modelos" className="hover:text-pink-600">Modelos</a><a href="#cidades" className="hover:text-pink-600">Cidades</a></nav><Link to="/create" className="hidden rounded-xl bg-pink-600 px-4 py-2.5 text-sm font-black text-white shadow-lg shadow-pink-600/20 hover:bg-pink-700 sm:inline-flex">Publicar perfil</Link><Menu className="h-5 w-5 text-slate-700 sm:hidden" /></div></header>
+    <div className="bg-gradient-to-r from-pink-600 to-violet-600 text-white"><div className="mx-auto flex max-w-6xl items-center justify-center gap-2 px-4 py-2 text-center text-xs font-bold sm:text-sm"><BadgeCheck className="h-4 w-4" /> Perfis passam por análise antes de aparecerem na vitrine.</div></div>
+    <section className="relative isolate overflow-hidden bg-[#190b20]"><div className="absolute inset-0 bg-[radial-gradient(circle_at_78%_30%,rgba(236,72,153,.75),transparent_23%),radial-gradient(circle_at_18%_80%,rgba(168,85,247,.55),transparent_30%)]"/><div className="absolute inset-0 opacity-30 [background-image:linear-gradient(120deg,transparent_25%,rgba(255,255,255,.15)_25%,rgba(255,255,255,.15)_26%,transparent_26%)] [background-size:28px_28px]"/><div className="relative mx-auto max-w-6xl px-4 py-20 sm:px-6 sm:py-28"><div className="max-w-3xl"><p className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-3 py-1.5 text-xs font-bold text-pink-100"><Sparkles className="h-3.5 w-3.5" /> Vitrine independente</p><h1 className="mt-5 text-4xl font-black tracking-tight text-white sm:text-6xl">Encontre perfis que combinam com o seu momento.</h1><p className="mt-5 max-w-xl text-base leading-7 text-pink-100 sm:text-lg">Pesquise por cidade, categoria ou interesse. Contato direto, informações claras e publicação após revisão.</p></div><div className="mt-9 rounded-2xl bg-white p-2 shadow-2xl shadow-black/30 sm:flex sm:items-center"><div className="flex flex-1 items-center gap-3 px-3 py-2"><Search className="h-5 w-5 text-pink-600"/><input value={query} onChange={event => setQuery(event.target.value)} placeholder="Buscar por cidade, categoria ou nome..." className="w-full bg-transparent text-sm font-medium text-slate-800 outline-none placeholder:text-slate-400"/>{query && <button onClick={() => setQuery('')}><X className="h-4 w-4 text-slate-400"/></button>}</div><button onClick={() => document.getElementById('modelos')?.scrollIntoView({ behavior: 'smooth' })} className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-pink-600 px-6 py-3 text-sm font-black text-white hover:bg-pink-700 sm:mt-0 sm:w-auto">Encontrar perfis <ArrowRight className="h-4 w-4"/></button></div></div></section>
+    <section id="categorias" className="mx-auto max-w-6xl px-4 py-14 sm:px-6"><div className="flex items-end justify-between gap-4"><div><p className="text-sm font-black uppercase tracking-[.18em] text-pink-600">Descubra</p><h2 className="mt-2 text-3xl font-black text-slate-900">O que você procura?</h2></div><Link to="/create" className="hidden text-sm font-bold text-pink-600 hover:text-pink-700 sm:inline-flex">Cadastrar modelo <ChevronRight className="h-4 w-4"/></Link></div><div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{DISCOVER.map((item, index) => <button key={item.title} onClick={() => { setQuery(item.title); document.getElementById('modelos')?.scrollIntoView({ behavior: 'smooth' }) }} className="group overflow-hidden rounded-2xl bg-white text-left shadow-sm ring-1 ring-slate-100 transition hover:-translate-y-1 hover:shadow-xl"><div className={`h-24 bg-gradient-to-br ${item.tone} p-5 text-white`}><span className="text-xs font-black uppercase tracking-[.18em]">0{index + 1}</span></div><div className="p-5"><h3 className="text-lg font-black text-slate-900">{item.title}</h3><p className="mt-2 text-sm leading-5 text-slate-500">{item.text}</p><span className="mt-4 inline-flex text-sm font-bold text-pink-600">Explorar <ChevronRight className="h-4 w-4 transition group-hover:translate-x-1"/></span></div></button>)}</div></section>
+    <section id="modelos" className="border-y border-pink-100 bg-white"><div className="mx-auto max-w-6xl px-4 py-14 sm:px-6"><div className="flex flex-col justify-between gap-5 sm:flex-row sm:items-end"><div><p className="text-sm font-black uppercase tracking-[.18em] text-pink-600">Em destaque</p><h2 className="mt-2 text-3xl font-black text-slate-900">Modelos e perfis publicados</h2><p className="mt-2 text-sm text-slate-500">Use os filtros para encontrar pessoas na sua cidade.</p></div><div className="flex flex-wrap gap-2">{cities.slice(0, 6).map(city => <button key={city} onClick={() => setSelectedCity(city === selectedCity ? '' : city)} className={`rounded-full border px-3 py-2 text-xs font-bold ${city === selectedCity ? 'border-pink-600 bg-pink-600 text-white' : 'border-pink-100 bg-pink-50 text-pink-700 hover:border-pink-300'}`}>{city}</button>)}</div></div>{loading ? <ProfileSkeleton /> : visibleProfiles.length === 0 ? <EmptyProfiles reset={() => { setQuery(''); setSelectedCity('') }} /> : <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{[...featured, ...visibleProfiles.filter(profile => !profile.is_featured)].map(profile => <ProfileCard key={profile.id} profile={profile}/>)}</div>}</div></section>
+    <section id="cidades" className="mx-auto max-w-6xl px-4 py-14 sm:px-6"><div className="rounded-3xl bg-slate-900 p-7 text-white sm:p-10"><div className="grid gap-8 md:grid-cols-[1.3fr_.7fr]"><div><p className="text-sm font-black uppercase tracking-[.18em] text-pink-300">Por cidade</p><h2 className="mt-2 text-3xl font-black">Uma vitrine organizada para encontrar com tranquilidade.</h2><p className="mt-4 max-w-2xl text-sm leading-6 text-slate-300">Escolha sua cidade, descubra categorias e converse diretamente com perfis aprovados.</p></div><div className="grid grid-cols-2 content-center gap-2">{cities.slice(0, 6).map(city => <button key={city} onClick={() => { setSelectedCity(city); document.getElementById('modelos')?.scrollIntoView({ behavior: 'smooth' }) }} className="rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-left text-sm font-bold hover:bg-white/10"><MapPin className="mr-1 inline h-3.5 w-3.5 text-pink-300"/>{city}</button>)}</div></div></div></section>
+    <footer className="border-t border-pink-100 bg-white"><div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-9 text-sm text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-6"><p><strong className="text-pink-600">thesex</strong> · Perfis independentes para maiores de 18 anos.</p><div className="flex gap-5"><Link to="/create" className="font-bold text-pink-600">Cadastrar modelo</Link><a href="#categorias">Categorias</a></div></div></footer>
+  </main>
 }
 
-function ProfileCard({ profile, featured }: { profile: Profile; featured?: boolean }) {
-  const mainPhoto = profile.photos[0] || ''
-
-  return (
-    <Link
-      to="/profile/$id"
-      params={{ id: profile.id }}
-      className="group relative flex flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-all hover:shadow-md hover:-translate-y-0.5 active:scale-[0.99]"
-    >
-      {/* Featured badge */}
-      {featured && (
-        <div className="absolute left-3 top-3 z-10 inline-flex items-center gap-1 rounded-full bg-accent px-2.5 py-1 text-[11px] font-bold text-accent-foreground shadow-sm">
-          <Crown className="h-3 w-3" /> Destaque
-        </div>
-      )}
-      {/* Photo */}
-      <div className="relative aspect-[3/4] overflow-hidden bg-secondary">
-        {mainPhoto ? (
-          <img
-            src={mainPhoto}
-            alt={profile.name}
-            loading="lazy"
-            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center text-muted-foreground">
-            <Star className="h-8 w-8 opacity-30" />
-          </div>
-        )}
-        {/* Price tag */}
-        <div className="absolute bottom-3 left-3 rounded-full bg-background/90 px-3 py-1 text-xs font-semibold text-foreground backdrop-blur-sm shadow-sm">
-          {profile.price}
-        </div>
-      </div>
-      {/* Info */}
-      <div className="flex flex-col gap-1.5 p-4">
-        <h3 className="font-serif text-base font-semibold text-foreground group-hover:text-primary transition-colors">
-          {profile.name}
-        </h3>
-        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-          <MapPin className="h-3 w-3" />
-          {profile.city}
-          <span className="mx-1 opacity-30">·</span>
-          {profile.age} anos
-        </div>
-        <div className="mt-1 flex flex-wrap gap-1">
-          {profile.tags.slice(0, 3).map(tag => (
-            <span key={tag} className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground">
-              {tag}
-            </span>
-          ))}
-          {profile.tags.length > 3 && (
-            <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-              +{profile.tags.length - 3}
-            </span>
-          )}
-        </div>
-      </div>
-    </Link>
-  )
-}
-
-function MarketplaceSkeleton() {
-  return (
-    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-12">
-      <div className="mb-8 h-7 w-40 rounded-lg bg-secondary animate-pulse" />
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="rounded-2xl border border-border bg-card overflow-hidden">
-            <div className="aspect-[3/4] bg-secondary animate-pulse" />
-            <div className="p-4 space-y-2">
-              <div className="h-5 w-28 rounded bg-secondary animate-pulse" />
-              <div className="h-4 w-20 rounded bg-secondary animate-pulse" />
-              <div className="flex gap-1">
-                <div className="h-4 w-12 rounded-full bg-secondary animate-pulse" />
-                <div className="h-4 w-14 rounded-full bg-secondary animate-pulse" />
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
+function ProfileCard({ profile }: { profile: Profile }) { const photo = profile.photos[0]; return <Link to="/profile/$id" params={{ id: profile.id }} className="group overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl"><div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-pink-100 to-violet-100">{photo ? <img src={photo} alt={profile.name} className="h-full w-full object-cover transition duration-500 group-hover:scale-105"/> : <div className="flex h-full items-center justify-center text-sm font-bold text-pink-400">Perfil em análise visual</div>}<span className="absolute left-3 top-3 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-black text-pink-600 shadow-sm">{profile.category}</span></div><div className="p-5"><div className="flex items-start justify-between gap-3"><div><h3 className="text-lg font-black text-slate-900">{profile.name}, {profile.age}</h3><p className="mt-1 text-sm text-slate-500"><MapPin className="mr-1 inline h-3.5 w-3.5 text-pink-500"/>{profile.city}{profile.neighborhood ? ` · ${profile.neighborhood}` : ''}</p></div><span className="rounded-lg bg-pink-50 px-2 py-1 text-xs font-black text-pink-700">{profile.price}</span></div><div className="mt-4 flex flex-wrap gap-1.5">{profile.tags.slice(0, 3).map(tag => <span key={tag} className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold text-slate-500">{tag}</span>)}</div><p className="mt-4 text-sm font-bold text-pink-600">Ver perfil <ArrowRight className="inline h-4 w-4"/></p></div></Link> }
+function EmptyProfiles({ reset }: { reset: () => void }) { return <div className="mt-8 rounded-3xl border border-dashed border-pink-200 bg-pink-50 p-12 text-center"><Search className="mx-auto h-9 w-9 text-pink-300"/><h3 className="mt-4 text-lg font-black text-slate-800">Ainda não há perfis para este filtro</h3><p className="mt-2 text-sm text-slate-500">Novos cadastros aprovados aparecerão aqui.</p><button onClick={reset} className="mt-5 rounded-xl border border-pink-200 bg-white px-4 py-2 text-sm font-bold text-pink-600">Limpar filtros</button></div> }
+function ProfileSkeleton() { return <div className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{Array.from({ length: 3 }).map((_, index) => <div key={index} className="overflow-hidden rounded-2xl border border-slate-100"><div className="aspect-[4/3] animate-pulse bg-pink-100"/><div className="space-y-3 p-5"><div className="h-5 w-36 animate-pulse rounded bg-slate-100"/><div className="h-4 w-24 animate-pulse rounded bg-slate-100"/></div></div>)}</div> }
