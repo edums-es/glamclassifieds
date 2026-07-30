@@ -281,6 +281,7 @@ function ProfileCard({ profile, saving, onUpdate }: { profile: ModerationProfile
         </div>
         {profile.description && <p className="mt-4 max-w-3xl text-sm leading-6 text-muted-foreground">{profile.description}</p>}
         {profile.contact_phone && <p className="mt-3 text-sm font-semibold text-foreground">Contato: {profile.contact_phone}{profile.availability ? ` · ${profile.availability}` : ''}</p>}
+        {(profile.services.length > 0 || profile.meeting_places.length > 0 || profile.payment_methods.length > 0) && <p className="mt-3 text-sm text-muted-foreground">{profile.services.join(' · ')}{profile.meeting_places.length > 0 ? ` · ${profile.meeting_places.join(' · ')}` : ''}{profile.payment_methods.length > 0 ? ` · ${profile.payment_methods.join(' · ')}` : ''}</p>}
         {profile.tags.length > 0 && <div className="mt-4 flex flex-wrap gap-2">{profile.tags.map(tag => <span key={tag} className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground">{tag}</span>)}</div>}
         <div className="mt-5 flex flex-wrap gap-2 border-t border-border pt-4">
           {profile.status !== 'active' && <ActionButton disabled={saving} onClick={() => onUpdate(profile, 'active', profile.is_featured)} tone="positive"><Check className="h-4 w-4" /> Publicar</ActionButton>}

@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, type ReactNode } from 'react'
 import { profilesApi, type Profile } from '@/lib/api'
-import { ArrowLeft, MapPin, Star, Shield, Heart, Share2, Crown, Phone, Clock3 } from 'lucide-react'
+import { ArrowLeft, MapPin, Star, Shield, Heart, Share2, Crown, Phone, Clock3, CreditCard, MapPinned, UsersRound, Flag, BadgeCheck } from 'lucide-react'
 
 export const Route = createFileRoute('/profile/$id')({
   head: ({ params }) => ({
@@ -50,10 +50,9 @@ function ProfileContent() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
-      {/* Back nav */}
-      <Link to="/" className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
+      <Link to="/explore" search={{ q: '', city: '', category: '' }} className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
         <ArrowLeft className="h-4 w-4" />
-        Voltar ao diretório
+        Voltar aos resultados
       </Link>
 
       {/* Hero photo area */}
@@ -146,6 +145,13 @@ function ProfileContent() {
 
           {profile.availability && <div className="mt-5 flex items-center gap-2 text-sm text-muted-foreground"><Clock3 className="h-4 w-4 text-primary" /> {profile.availability}</div>}
 
+          <div className="mt-6 grid gap-3 border-t border-border pt-5">
+            <DetailList title="Serviços" icon={<BadgeCheck className="h-4 w-4 text-primary"/>} values={profile.services}/>
+            <DetailList title="Atende" icon={<UsersRound className="h-4 w-4 text-primary"/>} values={profile.service_for}/>
+            <DetailList title="Local de atendimento" icon={<MapPinned className="h-4 w-4 text-primary"/>} values={profile.meeting_places}/>
+            <DetailList title="Pagamentos" icon={<CreditCard className="h-4 w-4 text-primary"/>} values={profile.payment_methods}/>
+          </div>
+
           {/* Verified badge */}
           <div className="mt-6 flex items-center gap-2 rounded-lg border border-border bg-card p-3">
             <Shield className="h-4 w-4 text-accent" />
@@ -154,6 +160,7 @@ function ProfileContent() {
 
           {/* CTA */}
           {profile.contact_phone ? <a href={`https://wa.me/${profile.contact_phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-md transition-all hover:bg-primary/90 hover:shadow-lg active:scale-[0.98]"><Phone className="h-4 w-4" /> Contatar {profile.name.split(' ')[0]}</a> : <Link to="/" className="mt-6 flex w-full items-center justify-center gap-2 rounded-full bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground shadow-md transition-all hover:bg-primary/90 hover:shadow-lg active:scale-[0.98]">Voltar à vitrine</Link>}
+          <a href="mailto:abuse@thesex.online?subject=Denúncia%20de%20perfil%20TheSex" className="mt-4 flex items-center justify-center gap-2 text-xs font-semibold text-muted-foreground hover:text-destructive"><Flag className="h-3.5 w-3.5"/> Denunciar conteúdo ou uso indevido de imagem</a>
         </div>
       </div>
     </div>
@@ -171,6 +178,11 @@ function NotFound() {
       </Link>
     </div>
   )
+}
+
+function DetailList({ title, icon, values }: { title: string; icon: ReactNode; values: string[] }) {
+  if (values.length === 0) return null
+  return <div><h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">{icon}{title}</h3><div className="mt-2 flex flex-wrap gap-1.5">{values.map(value => <span key={value} className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-muted-foreground">{value}</span>)}</div></div>
 }
 
 function ProfileSkeleton() {

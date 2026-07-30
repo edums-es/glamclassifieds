@@ -8,6 +8,10 @@ export type Profile = {
   price: string
   contact_phone: string
   availability: string
+  services: string[]
+  service_for: string[]
+  meeting_places: string[]
+  payment_methods: string[]
   photos: string[]
   description: string
   tags: string[]
@@ -53,8 +57,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const profilesApi = {
-  async list(): Promise<Profile[]> {
-    const payload = await request<ApiEnvelope<Profile[]>>('/profiles')
+  async list(filters: { q?: string; city?: string; category?: string } = {}): Promise<Profile[]> {
+    const search = new URLSearchParams()
+    if (filters.q) search.set('q', filters.q)
+    if (filters.city) search.set('city', filters.city)
+    if (filters.category) search.set('category', filters.category)
+    const payload = await request<ApiEnvelope<Profile[]>>(`/profiles${search.size ? `?${search}` : ''}`)
     return payload.data
   },
 
@@ -72,6 +80,10 @@ export const profilesApi = {
     price: string
     contactPhone: string
     availability: string
+    services: string[]
+    serviceFor: string[]
+    meetingPlaces: string[]
+    paymentMethods: string[]
     description: string
     tags: string[]
     photos: File[]
@@ -86,6 +98,10 @@ export const profilesApi = {
     body.set('price', values.price)
     body.set('contact_phone', values.contactPhone)
     body.set('availability', values.availability)
+    body.set('services', JSON.stringify(values.services))
+    body.set('service_for', JSON.stringify(values.serviceFor))
+    body.set('meeting_places', JSON.stringify(values.meetingPlaces))
+    body.set('payment_methods', JSON.stringify(values.paymentMethods))
     body.set('description', values.description)
     body.set('tags', JSON.stringify(values.tags))
     body.set('adult_confirmed', String(values.adultConfirmed))

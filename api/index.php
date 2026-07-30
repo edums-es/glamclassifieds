@@ -97,6 +97,10 @@ function api_require_admin(PDO $pdo): array
 function api_profile_output(array $profile, array $photos): array
 {
     $tags = json_decode((string) $profile['tags'], true);
+    $services = json_decode((string) ($profile['services'] ?? '[]'), true);
+    $serviceFor = json_decode((string) ($profile['service_for'] ?? '[]'), true);
+    $meetingPlaces = json_decode((string) ($profile['meeting_places'] ?? '[]'), true);
+    $paymentMethods = json_decode((string) ($profile['payment_methods'] ?? '[]'), true);
     return [
         'id' => $profile['id'],
         'name' => $profile['display_name'],
@@ -107,6 +111,10 @@ function api_profile_output(array $profile, array $photos): array
         'price' => $profile['price_label'],
         'contact_phone' => $profile['contact_phone'] ?? '',
         'availability' => $profile['availability'] ?? '',
+        'services' => is_array($services) ? array_values($services) : [],
+        'service_for' => is_array($serviceFor) ? array_values($serviceFor) : [],
+        'meeting_places' => is_array($meetingPlaces) ? array_values($meetingPlaces) : [],
+        'payment_methods' => is_array($paymentMethods) ? array_values($paymentMethods) : [],
         'description' => $profile['description'] ?? '',
         'tags' => is_array($tags) ? array_values($tags) : [],
         'photos' => array_map(static fn(array $photo): string => '/api/' . ltrim($photo['path'], '/'), $photos),
@@ -128,6 +136,10 @@ function api_migrate_profiles(PDO $pdo): void
         'neighborhood' => 'ADD COLUMN neighborhood VARCHAR(120) NULL AFTER city',
         'contact_phone' => 'ADD COLUMN contact_phone VARCHAR(40) NULL AFTER price_label',
         'availability' => 'ADD COLUMN availability VARCHAR(160) NULL AFTER contact_phone',
+        'services' => 'ADD COLUMN services JSON NULL AFTER availability',
+        'service_for' => 'ADD COLUMN service_for JSON NULL AFTER services',
+        'meeting_places' => 'ADD COLUMN meeting_places JSON NULL AFTER service_for',
+        'payment_methods' => 'ADD COLUMN payment_methods JSON NULL AFTER meeting_places',
     ];
 
     foreach ($changes as $column => $statement) {
@@ -314,16 +326,21 @@ try {
     if ($method === 'GET' && $path === '/v1/profiles') {
         $query = trim((string) ($_GET['q'] ?? ''));
         $city = trim((string) ($_GET['city'] ?? ''));
+        $category = trim((string) ($_GET['category'] ?? ''));
         $sql = 'SELECT * FROM profiles WHERE status = "active"';
         $params = [];
 
         if ($query !== '') {
-            $sql .= ' AND (display_name LIKE :query OR city LIKE :query OR description LIKE :query)';
+            $sql .= ' AND (display_name LIKE :query OR city LIKE :query OR neighborhood LIKE :query OR category LIKE :query OR description LIKE :query)';
             $params['query'] = '%' . $query . '%';
         }
         if ($city !== '') {
             $sql .= ' AND city = :city';
             $params['city'] = $city;
+        }
+        if ($category !== '') {
+            $sql .= ' AND category = :category';
+            $params['category'] = $category;
         }
         $sql .= ' ORDER BY is_featured DESC, created_at DESC LIMIT 100';
         $statement = $pdo->prepare($sql);
@@ -363,13 +380,29 @@ try {
         $availability = trim((string) ($_POST['availability'] ?? ''));
         $description = trim((string) ($_POST['description'] ?? ''));
         $tags = json_decode((string) ($_POST['tags'] ?? '[]'), true);
+        $services = json_decode((string) ($_POST['services'] ?? '[]'), true);
+        $serviceFor = json_decode((string) ($_POST['service_for'] ?? '[]'), true);
+        $meetingPlaces = json_decode((string) ($_POST['meeting_places'] ?? '[]'), true);
+        $paymentMethods = json_decode((string) ($_POST['payment_methods'] ?? '[]'), true);
         $honeypot = trim((string) ($_POST['website'] ?? ''));
 
         if ($honeypot !== '') {
             Response::json(['message' => 'Solicitação recebida.'], 201);
         }
         $allowedCategories = ['Acompanhante', 'Massagem', 'Trans e Travesti', 'Encontro casual', 'Modelo independente'];
-        if ($name === '' || mb_strlen($name) > 80 || !$age || $city === '' || mb_strlen($city) > 120 || !in_array($category, $allowedCategories, true) || mb_strlen($neighborhood) > 120 || $price === '' || mb_strlen($price) > 80 || mb_strlen($contactPhone) < 8 || mb_strlen($contactPhone) > 40 || mb_strlen($availability) > 160 || mb_strlen($description) > 2000 || !is_array($tags) || count($tags) > 12 || ($_POST['adult_confirmed'] ?? '') !== 'true') {
+        $profileLists = [$tags, $services, $serviceFor, $meetingPlaces, $paymentMethods];
+        $invalidList = array_filter($profileLists, static function ($list): bool {
+            if (!is_array($list) || count($list) > 12) {
+                return true;
+            }
+            foreach ($list as $value) {
+                if (!is_string($value) || mb_strlen($value) > 60) {
+                    return true;
+                }
+            }
+            return false;
+        });
+        if ($name === '' || mb_strlen($name) > 80 || !$age || $city === '' || mb_strlen($city) > 120 || !in_array($category, $allowedCategories, true) || mb_strlen($neighborhood) > 120 || $price === '' || mb_strlen($price) > 80 || mb_strlen($contactPhone) < 8 || mb_strlen($contactPhone) > 40 || mb_strlen($availability) > 160 || mb_strlen($description) > 2000 || $invalidList !== [] || ($_POST['adult_confirmed'] ?? '') !== 'true') {
             Response::error('Verifique os campos obrigatórios do perfil.', 422);
         }
 
@@ -414,8 +447,8 @@ try {
             }
 
             $pdo->beginTransaction();
-            $profile = $pdo->prepare('INSERT INTO profiles (id, display_name, age, category, city, neighborhood, price_label, contact_phone, availability, description, tags, submitted_ip_hash) VALUES (:id, :name, :age, :category, :city, :neighborhood, :price, :contact_phone, :availability, :description, :tags, :ip_hash)');
-            $profile->execute(['id' => $id, 'name' => $name, 'age' => $age, 'category' => $category, 'city' => $city, 'neighborhood' => $neighborhood ?: null, 'price' => $price, 'contact_phone' => $contactPhone, 'availability' => $availability ?: null, 'description' => $description, 'tags' => json_encode(array_values($tags), JSON_UNESCAPED_UNICODE), 'ip_hash' => $ipHash]);
+            $profile = $pdo->prepare('INSERT INTO profiles (id, display_name, age, category, city, neighborhood, price_label, contact_phone, availability, services, service_for, meeting_places, payment_methods, description, tags, submitted_ip_hash) VALUES (:id, :name, :age, :category, :city, :neighborhood, :price, :contact_phone, :availability, :services, :service_for, :meeting_places, :payment_methods, :description, :tags, :ip_hash)');
+            $profile->execute(['id' => $id, 'name' => $name, 'age' => $age, 'category' => $category, 'city' => $city, 'neighborhood' => $neighborhood ?: null, 'price' => $price, 'contact_phone' => $contactPhone, 'availability' => $availability ?: null, 'services' => json_encode(array_values($services), JSON_UNESCAPED_UNICODE), 'service_for' => json_encode(array_values($serviceFor), JSON_UNESCAPED_UNICODE), 'meeting_places' => json_encode(array_values($meetingPlaces), JSON_UNESCAPED_UNICODE), 'payment_methods' => json_encode(array_values($paymentMethods), JSON_UNESCAPED_UNICODE), 'description' => $description, 'tags' => json_encode(array_values($tags), JSON_UNESCAPED_UNICODE), 'ip_hash' => $ipHash]);
             $photo = $pdo->prepare('INSERT INTO profile_photos (profile_id, path, position) VALUES (:profile_id, :path, :position)');
             foreach ($paths as $position => $filePath) {
                 $photo->execute(['profile_id' => $id, 'path' => $filePath, 'position' => $position]);
