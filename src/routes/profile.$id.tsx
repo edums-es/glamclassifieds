@@ -1,92 +1,74 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { profilesApi, type Profile } from '@/lib/api'
-import { ArrowLeft, BadgeCheck, ChevronLeft, ChevronRight, Clock3, CreditCard, Flag, Heart, MapPin, MapPinned, Phone, Share2, ShieldCheck, Sparkles, UsersRound } from 'lucide-react'
+import { ArrowLeft, BadgeCheck, CheckCircle2, Flag, Heart, MapPin, Phone, Share2, ShieldCheck, Sparkles } from 'lucide-react'
 
 export const Route = createFileRoute('/profile/$id')({
-  head: () => ({ meta: [{ title: 'Perfil · TheSex' }, { name: 'description', content: 'Conheça um perfil publicado no TheSex.' }] }),
+  head: () => ({ meta: [{ title: 'Perfil · TheSex' }, { name: 'description', content: 'Informações, fotos e formas de contato de um perfil publicado.' }] }),
   component: ProfilePage,
 })
 
 function ProfilePage() {
-  return <main className="min-h-dvh bg-[#fffaf8] text-slate-950"><ProfileContent /></main>
-}
-
-function ProfileContent() {
   const { id } = Route.useParams()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
-  const [activePhoto, setActivePhoto] = useState(0)
   const [liked, setLiked] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  const loadProfile = useCallback(async () => {
+  const load = useCallback(async () => {
     setLoading(true)
     try { setProfile(await profilesApi.get(id)) }
     catch (error) { console.error('Não foi possível carregar o perfil:', error); setProfile(null) }
     finally { setLoading(false) }
   }, [id])
+  useEffect(() => { void load() }, [load])
 
-  useEffect(() => { loadProfile() }, [loadProfile])
-
-  const shareProfile = async () => {
-    const data = { title: profile?.name ?? 'TheSex', text: 'Confira este perfil no TheSex.', url: window.location.href }
+  const share = async () => {
     try {
-      if (navigator.share) await navigator.share(data)
-      else {
-        await navigator.clipboard.writeText(window.location.href)
-        setCopied(true)
-        window.setTimeout(() => setCopied(false), 2200)
-      }
-    } catch (error) {
-      if ((error as Error).name !== 'AbortError') console.error('Não foi possível compartilhar o perfil:', error)
-    }
+      if (navigator.share) await navigator.share({ title: profile?.name ?? 'TheSex', url: window.location.href })
+      else { await navigator.clipboard.writeText(window.location.href); setCopied(true); window.setTimeout(() => setCopied(false), 2000) }
+    } catch (error) { if ((error as Error).name !== 'AbortError') console.error('Não foi possível compartilhar:', error) }
   }
 
   if (loading) return <ProfileSkeleton />
   if (!profile) return <NotFound />
 
-  const photos = profile.photos
-  const hasManyPhotos = photos.length > 1
-  const image = photos[activePhoto]
-  const showPrevious = () => setActivePhoto(current => (current - 1 + photos.length) % photos.length)
-  const showNext = () => setActivePhoto(current => (current + 1) % photos.length)
+  const phone = profile.contact_phone.replace(/\D/g, '')
+  return <main className="min-h-dvh bg-[#fdfcfb] text-[#252429]">
+    <div className="h-1.5 bg-[#c51f69]" />
+    <header className="border-b border-[#ece7e3] bg-white"><div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3 sm:px-6"><Link to="/" className="text-lg font-black tracking-tight text-[#c51f69]">the<span className="text-[#28252a]">sex</span></Link><Link to="/create" className="rounded-md bg-[#438aca] px-3.5 py-2 text-xs font-bold text-white transition hover:bg-[#3478b6]">PUBLICAR PERFIL</Link></div></header>
+    <article className="mx-auto max-w-4xl px-4 pb-16 pt-5 sm:px-6">
+      <Link to="/explore" search={{ q: '', city: '', category: '' }} className="inline-flex items-center gap-1.5 text-xs font-bold text-[#c51f69] hover:underline"><ArrowLeft className="h-3.5 w-3.5" />Voltar para a busca</Link>
+      <p className="mt-5 text-[10px] font-semibold uppercase tracking-[.04em] text-[#9a9192]">TheSex / {profile.category} / {profile.city}</p>
 
-  return <div className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-8 lg:px-8">
-    <Link to="/explore" search={{ q: '', city: '', category: '' }} className="group mb-5 inline-flex items-center gap-2 text-sm font-semibold text-slate-500 transition hover:text-[#8e1839]"><ArrowLeft className="h-4 w-4 transition group-hover:-translate-x-0.5" />Voltar para a busca</Link>
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_390px] lg:items-start">
-      <section className="overflow-hidden rounded-[1.75rem] border border-[#eadedb] bg-white shadow-[0_22px_70px_-36px_rgba(59,8,25,.35)]">
-        <div className="relative aspect-[4/5] overflow-hidden bg-[#f3edeb] sm:aspect-[16/15]">
-          {image ? <img src={image} alt={`Foto de ${profile.name}`} className="h-full w-full object-cover" /> : <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-slate-400"><Sparkles className="h-9 w-9" /><p className="text-sm font-medium">Fotos em atualização</p></div>}
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/35 to-transparent" />
-          {profile.is_featured && <span className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-white/95 px-3 py-1.5 text-xs font-bold text-[#8e1839] shadow-sm"><Sparkles className="h-3.5 w-3.5" />Em destaque</span>}
-          {hasManyPhotos && <><button aria-label="Foto anterior" onClick={showPrevious} className="absolute left-3 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-slate-800 shadow-md transition hover:bg-white"><ChevronLeft className="h-5 w-5" /></button><button aria-label="Próxima foto" onClick={showNext} className="absolute right-3 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full bg-white/90 text-slate-800 shadow-md transition hover:bg-white"><ChevronRight className="h-5 w-5" /></button><span className="absolute bottom-4 right-4 rounded-full bg-black/55 px-3 py-1.5 text-xs font-bold text-white">{activePhoto + 1} / {photos.length}</span></>}
-        </div>
-        {hasManyPhotos && <div className="flex gap-2 overflow-x-auto p-3 sm:p-4">{photos.map((url, index) => <button key={url} onClick={() => setActivePhoto(index)} className={`h-16 w-14 shrink-0 overflow-hidden rounded-xl border-2 transition ${index === activePhoto ? 'border-[#8e1839] shadow-sm' : 'border-transparent opacity-60 hover:opacity-100'}`}><img src={url} alt={`Miniatura ${index + 1}`} className="h-full w-full object-cover" /></button>)}</div>}
+      <section className="mt-3 border border-[#e8e2df] bg-white px-4 py-4 shadow-[0_1px_2px_rgba(31,24,27,.04)] sm:px-5">
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start"><div><div className="flex flex-wrap items-center gap-2"><h1 className="text-2xl font-extrabold tracking-tight text-[#c51f69] sm:text-3xl">{profile.name}</h1>{profile.is_featured && <span className="rounded-full bg-[#fff1f7] px-2 py-1 text-[10px] font-bold text-[#c51f69]">DESTAQUE</span>}</div><div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-xs font-semibold text-[#625c60]"><span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5 text-[#c51f69]" />{profile.city}{profile.neighborhood ? ` · ${profile.neighborhood}` : ''}</span><span>{profile.age} anos</span><span className="rounded border border-[#e5dedc] px-2 py-0.5 text-[10px] text-[#746c70]">{profile.category}</span></div></div><div className="flex items-center gap-2"><button aria-label={liked ? 'Remover dos favoritos' : 'Salvar nos favoritos'} onClick={() => setLiked(value => !value)} className={`grid h-8 w-8 place-items-center rounded-full border transition ${liked ? 'border-[#e89abb] bg-[#fff1f7] text-[#c51f69]' : 'border-[#e5dedc] text-[#7d7477] hover:text-[#c51f69]'}`}><Heart className={`h-3.5 w-3.5 ${liked ? 'fill-current' : ''}`} /></button><button aria-label="Compartilhar perfil" onClick={share} className="grid h-8 w-8 place-items-center rounded-full border border-[#e5dedc] text-[#7d7477] transition hover:text-[#c51f69]"><Share2 className="h-3.5 w-3.5" /></button></div></div>
+        <p className="mt-4 border-t border-[#eee8e5] pt-4 text-sm font-semibold leading-6 text-[#353136]">{profile.description}</p>
+        <div className="mt-4 flex flex-wrap items-center gap-2 text-xs"><span className="rounded bg-[#f8f5f3] px-2.5 py-1.5 font-bold text-[#5b5457]">{profile.price}</span>{profile.availability && <span className="rounded bg-[#f8f5f3] px-2.5 py-1.5 font-medium text-[#6c6467]">{profile.availability}</span>}</div>
       </section>
-      <aside className="rounded-[1.75rem] border border-[#eadedb] bg-white p-5 shadow-[0_22px_70px_-36px_rgba(59,8,25,.35)] sm:p-6 lg:sticky lg:top-6">
-        <div className="flex items-start justify-between gap-4"><div><span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[.16em] text-[#9d2044]"><BadgeCheck className="h-3.5 w-3.5" />Perfil revisado</span><h1 className="mt-2 font-serif text-3xl font-bold leading-[1.04] text-slate-950">{profile.name}</h1><div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-sm font-medium text-slate-600"><span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4 text-[#9d2044]" />{profile.city}{profile.neighborhood ? ` · ${profile.neighborhood}` : ''}</span><span className="h-1 w-1 rounded-full bg-slate-300" /><span>{profile.age} anos</span></div></div><div className="flex shrink-0 gap-2"><button aria-label={liked ? 'Remover dos favoritos' : 'Adicionar aos favoritos'} onClick={() => setLiked(value => !value)} className={`grid h-10 w-10 place-items-center rounded-full border transition ${liked ? 'border-rose-200 bg-rose-50 text-rose-600' : 'border-[#eadedb] text-slate-500 hover:border-[#ca9aa9] hover:text-[#8e1839]'}`}><Heart className={`h-4 w-4 ${liked ? 'fill-current' : ''}`} /></button><button aria-label="Compartilhar perfil" onClick={shareProfile} className="grid h-10 w-10 place-items-center rounded-full border border-[#eadedb] text-slate-500 transition hover:border-[#ca9aa9] hover:text-[#8e1839]"><Share2 className="h-4 w-4" /></button></div></div>
-        <div className="mt-6 rounded-2xl bg-[#5b0b22] px-5 py-4 text-white"><p className="text-xs font-semibold uppercase tracking-[.14em] text-rose-200">Informação de valor</p><p className="mt-1 text-2xl font-bold">{profile.price}</p></div>
-        <div className="mt-6"><p className="text-xs font-bold uppercase tracking-[.14em] text-[#9d2044]">Sobre</p><p className="mt-2 text-sm leading-6 text-slate-600">{profile.description}</p></div>
-        {profile.availability && <div className="mt-5 flex items-center gap-2 rounded-xl bg-[#fff7f5] px-3.5 py-3 text-sm font-medium text-slate-700"><Clock3 className="h-4 w-4 text-[#9d2044]" />{profile.availability}</div>}
-        <div className="mt-6 grid gap-4 border-t border-[#eadedb] pt-5"><DetailList title="Serviços" icon={<BadgeCheck className="h-4 w-4 text-[#9d2044]" />} values={profile.services} /><DetailList title="Atende" icon={<UsersRound className="h-4 w-4 text-[#9d2044]" />} values={profile.service_for} /><DetailList title="Local de atendimento" icon={<MapPinned className="h-4 w-4 text-[#9d2044]" />} values={profile.meeting_places} /><DetailList title="Formas de pagamento" icon={<CreditCard className="h-4 w-4 text-[#9d2044]" />} values={profile.payment_methods} /></div>
-        <div className="mt-6 flex items-start gap-2.5 rounded-xl border border-[#eadedb] bg-[#fffdfc] p-3.5"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#9d2044]" /><p className="text-xs leading-5 text-slate-600">Informações e imagens passam por revisão antes da publicação.</p></div>
-        {profile.contact_phone ? <a href={`https://wa.me/${profile.contact_phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-[#8e1839] px-6 py-3.5 text-sm font-bold text-white shadow-lg shadow-[#8e1839]/20 transition hover:bg-[#700e2b] hover:shadow-xl active:scale-[.99]"><Phone className="h-4 w-4" />Conversar no WhatsApp</a> : <Link to="/explore" search={{ q: '', city: '', category: '' }} className="mt-6 flex w-full items-center justify-center rounded-2xl bg-[#8e1839] px-6 py-3.5 text-sm font-bold text-white">Voltar para a busca</Link>}
-        {copied && <p className="mt-3 text-center text-xs font-semibold text-emerald-700">Link copiado.</p>}<a href="mailto:abuse@thesex.online?subject=Denúncia%20de%20perfil%20TheSex" className="mt-4 flex items-center justify-center gap-2 text-xs font-semibold text-slate-500 transition hover:text-[#8e1839]"><Flag className="h-3.5 w-3.5" />Denunciar conteúdo ou uso indevido de imagem</a>
-      </aside>
-    </div>
-  </div>
+
+      <Gallery photos={profile.photos} profileName={profile.name} />
+
+      <section className="mt-8 border-t border-[#e6dfdc] pt-5"><SectionTitle icon={<BadgeCheck className="h-4 w-4" />}>Sobre</SectionTitle><p className="mt-4 text-sm leading-7 text-[#5f585b]">{profile.description}</p>{profile.tags.length > 0 && <div className="mt-4 flex flex-wrap gap-2">{profile.tags.map(tag => <span key={tag} className="rounded border border-[#e7e0dd] bg-white px-2 py-1 text-[11px] font-medium text-[#676064]">{tag}</span>)}</div>}</section>
+      <DetailSection title="Serviços" values={profile.services} />
+      <DetailSection title="Atende" values={profile.service_for} />
+      <DetailSection title="Local de atendimento" values={profile.meeting_places} />
+      <DetailSection title="Formas de pagamento" values={profile.payment_methods} />
+
+      <section className="mt-9 border-y border-[#e6dfdc] py-7 text-center"><p className="text-base font-bold text-[#3a3538]">Entre em contato</p><p className="mt-1 text-xs text-[#7a7175]">Converse diretamente e combine os detalhes com discrição.</p><div className="mx-auto mt-5 grid max-w-md gap-3 sm:grid-cols-2">{phone && <a href={`tel:+${phone}`} className="inline-flex items-center justify-center gap-2 rounded-md bg-[#c51f69] px-4 py-3 text-xs font-bold text-white transition hover:bg-[#ab1758]"><Phone className="h-3.5 w-3.5" />LIGAR</a>}{phone && <a href={`https://wa.me/${phone}`} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-2 rounded-md bg-[#24c965] px-4 py-3 text-xs font-bold text-white transition hover:bg-[#1bae56]"><Phone className="h-3.5 w-3.5" />WHATSAPP</a>}</div>{copied && <p className="mt-3 text-xs font-semibold text-emerald-700">Link copiado.</p>}</section>
+
+      <div className="mt-6 border border-[#e7b2cc] bg-[#fffafd] px-4 py-3 text-xs leading-5 text-[#64585e]"><div className="flex items-center gap-2 font-bold text-[#c51f69]"><ShieldCheck className="h-4 w-4" />Canais de segurança</div><p className="mt-1">Informações e imagens passam por revisão antes da publicação. Use o canal de denúncia para reportar conteúdo ou uso indevido de imagem.</p></div>
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 text-[11px] font-semibold text-[#81777b]"><span className="inline-flex items-center gap-1"><CheckCircle2 className="h-3.5 w-3.5 text-[#438aca]" />Perfil publicado após análise</span><a href="mailto:abuse@thesex.online?subject=Denúncia%20de%20perfil%20TheSex" className="inline-flex items-center gap-1 text-[#c51f69] hover:underline"><Flag className="h-3.5 w-3.5" />Reportar abuso ou golpe</a></div>
+    </article>
+  </main>
 }
 
-function DetailList({ title, icon, values }: { title: string; icon: ReactNode; values: string[] }) {
-  if (values.length === 0) return null
-  return <div><h2 className="flex items-center gap-2 text-sm font-bold text-slate-900">{icon}{title}</h2><div className="mt-2 flex flex-wrap gap-2">{values.map(value => <span key={value} className="rounded-full bg-[#f7f0ee] px-3 py-1.5 text-xs font-medium text-slate-600">{value}</span>)}</div></div>
+function Gallery({ photos, profileName }: { photos: string[]; profileName: string }) {
+  if (photos.length === 0) return <section className="mt-5 grid aspect-[16/9] place-items-center border border-[#e8e2df] bg-[#f5f2f0] text-sm font-medium text-[#857b7e]"><Sparkles className="mb-2 h-5 w-5" />Fotos em atualização</section>
+  return <section aria-label="Galeria de fotos" className={`mt-5 grid gap-px overflow-hidden border border-[#e8e2df] bg-[#e8e2df] ${photos.length === 1 ? 'grid-cols-1' : 'grid-cols-2 md:grid-cols-3'}`}>{photos.map((photo, index) => <img key={photo} src={photo} alt={`Foto ${index + 1} de ${profileName}`} className={`w-full bg-[#f2eeeb] object-cover ${photos.length === 1 ? 'aspect-[16/10] max-h-[640px]' : 'aspect-[3/4]'}`} />)}</section>
 }
 
-function NotFound() {
-  return <div className="flex min-h-[60dvh] flex-col items-center justify-center px-4 text-center"><div className="grid h-14 w-14 place-items-center rounded-2xl bg-[#f7e9ed] text-[#8e1839]"><Sparkles className="h-6 w-6" /></div><h1 className="mt-5 text-2xl font-bold">Perfil não encontrado</h1><p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">Este perfil pode estar em revisão, ter sido pausado ou removido.</p><Link to="/explore" search={{ q: '', city: '', category: '' }} className="mt-6 rounded-xl bg-[#8e1839] px-5 py-3 text-sm font-bold text-white">Ver perfis publicados</Link></div>
-}
-
-function ProfileSkeleton() {
-  return <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8"><div className="mb-6 h-5 w-40 animate-pulse rounded bg-[#f0e9e7]" /><div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_390px]"><div className="aspect-[4/5] animate-pulse rounded-[1.75rem] bg-[#f0e9e7] sm:aspect-[16/15]" /><div className="space-y-5 rounded-[1.75rem] border border-[#eadedb] bg-white p-6"><div className="h-4 w-28 animate-pulse rounded bg-[#f0e9e7]" /><div className="h-10 w-3/4 animate-pulse rounded bg-[#f0e9e7]" /><div className="h-20 animate-pulse rounded-2xl bg-[#f0e9e7]" /><div className="h-28 animate-pulse rounded-xl bg-[#f0e9e7]" /><div className="h-12 animate-pulse rounded-2xl bg-[#f0e9e7]" /></div></div></div>
-}
+function SectionTitle({ icon, children }: { icon: ReactNode; children: ReactNode }) { return <h2 className="flex items-center gap-2 text-base font-bold text-[#363136]"><span className="text-[#c51f69]">{icon}</span>{children}</h2> }
+function DetailSection({ title, values }: { title: string; values: string[] }) { if (values.length === 0) return null; return <section className="mt-7 border-t border-[#e6dfdc] pt-5"><SectionTitle icon={<CheckCircle2 className="h-4 w-4" />}>{title}</SectionTitle><div className="mt-4 flex flex-wrap gap-2">{values.map(value => <span key={value} className="rounded border border-[#e7e0dd] bg-white px-2.5 py-1.5 text-xs font-medium text-[#635b5f]">{value}</span>)}</div></section> }
+function ProfileSkeleton() { return <main className="min-h-dvh bg-[#fdfcfb]"><div className="h-1.5 bg-[#c51f69]" /><div className="mx-auto max-w-4xl px-4 py-10 sm:px-6"><div className="h-3 w-32 animate-pulse bg-[#eee9e6]" /><div className="mt-5 h-36 animate-pulse border border-[#ece6e3] bg-white" /><div className="mt-5 aspect-[16/10] animate-pulse bg-[#eee9e6]" /></div></main> }
+function NotFound() { return <main className="grid min-h-dvh place-items-center bg-[#fdfcfb] px-4 text-center"><div><Sparkles className="mx-auto h-8 w-8 text-[#c51f69]" /><h1 className="mt-4 text-xl font-bold">Perfil não encontrado</h1><p className="mt-2 text-sm text-[#736a6e]">Este perfil pode estar em revisão ou ter sido pausado.</p><Link to="/explore" search={{ q: '', city: '', category: '' }} className="mt-5 inline-block rounded-md bg-[#438aca] px-4 py-2.5 text-xs font-bold text-white">VER PERFIS</Link></div></main> }
