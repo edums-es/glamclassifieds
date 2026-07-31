@@ -187,6 +187,7 @@ function api_migrate_profiles(PDO $pdo): void
         'neighborhood' => 'ADD COLUMN neighborhood VARCHAR(120) NULL AFTER city',
         'contact_phone' => 'ADD COLUMN contact_phone VARCHAR(40) NULL AFTER price_label',
         'availability' => 'ADD COLUMN availability VARCHAR(160) NULL AFTER contact_phone',
+        'moderation_note' => 'ADD COLUMN moderation_note TEXT NULL AFTER availability',
         'services' => 'ADD COLUMN services JSON NULL AFTER availability',
         'service_for' => 'ADD COLUMN service_for JSON NULL AFTER services',
         'meeting_places' => 'ADD COLUMN meeting_places JSON NULL AFTER service_for',
@@ -230,6 +231,7 @@ function api_admin_profile_output(array $profile, array $photos): array
 {
     return array_merge(api_profile_output($profile, $photos), [
         'status' => $profile['status'],
+        'moderation_note' => $profile['moderation_note'] ?? '',
         'created_at' => $profile['created_at'],
         'updated_at' => $profile['updated_at'],
     ]);
@@ -347,6 +349,83 @@ try {
             $data[] = api_admin_profile_output($profile, $photoStatement->fetchAll());
         }
         Response::json(['data' => $data]);
+    }
+
+    if ($method === 'PATCH' && preg_match('#^/v1/member/profiles/([a-f0-9-]{36})$#i', $path, $matches)) {
+        api_validate_same_origin();
+        $member = api_require_member($pdo);
+        $body = api_json_body();
+        $name = trim((string) ($body['name'] ?? ''));
+        $age = filter_var($body['age'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 18, 'max_range' => 99]]);
+        $category = trim((string) ($body['category'] ?? ''));
+        $city = trim((string) ($body['city'] ?? ''));
+        $neighborhood = trim((string) ($body['neighborhood'] ?? ''));
+        $price = trim((string) ($body['price'] ?? ''));
+        $contactPhone = trim((string) ($body['contact_phone'] ?? ''));
+        $availability = trim((string) ($body['availability'] ?? ''));
+        $description = trim((string) ($body['description'] ?? ''));
+        $tags = $body['tags'] ?? [];
+        $services = $body['services'] ?? [];
+        $serviceFor = $body['service_for'] ?? [];
+        $meetingPlaces = $body['meeting_places'] ?? [];
+        $paymentMethods = $body['payment_methods'] ?? [];
+        $allowedCategories = ['Acompanhante', 'Massagem', 'Trans e Travesti', 'Encontro casual', 'Modelo independente'];
+        $lists = [$tags, $services, $serviceFor, $meetingPlaces, $paymentMethods];
+        $invalidList = false;
+        foreach ($lists as $list) {
+            if (!is_array($list) || count($list) > 12) {
+                $invalidList = true;
+                break;
+            }
+            foreach ($list as $value) {
+                if (!is_string($value) || mb_strlen($value) > 60) {
+                    $invalidList = true;
+                    break 2;
+                }
+            }
+        }
+        if ($name === '' || mb_strlen($name) > 80 || !$age || !in_array($category, $allowedCategories, true) || $city === '' || mb_strlen($city) > 120 || mb_strlen($neighborhood) > 120 || $price === '' || mb_strlen($price) > 80 || mb_strlen($contactPhone) < 8 || mb_strlen($contactPhone) > 40 || mb_strlen($availability) > 160 || mb_strlen($description) > 2000 || $invalidList) {
+            Response::error('Verifique os dados do perfil antes de salvar.', 422);
+        }
+        $statement = $pdo->prepare('UPDATE profiles SET display_name = :name, age = :age, category = :category, city = :city, neighborhood = :neighborhood, price_label = :price, contact_phone = :contact_phone, availability = :availability, services = :services, service_for = :service_for, meeting_places = :meeting_places, payment_methods = :payment_methods, description = :description, tags = :tags, status = "pending", is_featured = 0, moderation_note = NULL WHERE id = :id AND member_id = :member_id');
+        $statement->execute(['name' => $name, 'age' => $age, 'category' => $category, 'city' => $city, 'neighborhood' => $neighborhood ?: null, 'price' => $price, 'contact_phone' => $contactPhone, 'availability' => $availability ?: null, 'services' => json_encode(array_values($services), JSON_UNESCAPED_UNICODE), 'service_for' => json_encode(array_values($serviceFor), JSON_UNESCAPED_UNICODE), 'meeting_places' => json_encode(array_values($meetingPlaces), JSON_UNESCAPED_UNICODE), 'payment_methods' => json_encode(array_values($paymentMethods), JSON_UNESCAPED_UNICODE), 'description' => $description, 'tags' => json_encode(array_values($tags), JSON_UNESCAPED_UNICODE), 'id' => $matches[1], 'member_id' => $member['id']]);
+        if ($statement->rowCount() === 0) {
+            $exists = $pdo->prepare('SELECT id FROM profiles WHERE id = :id AND member_id = :member_id LIMIT 1');
+            $exists->execute(['id' => $matches[1], 'member_id' => $member['id']]);
+            if (!$exists->fetch()) {
+                Response::error('Perfil não encontrado.', 404);
+            }
+        }
+        $profileStatement = $pdo->prepare('SELECT * FROM profiles WHERE id = :id AND member_id = :member_id LIMIT 1');
+        $profileStatement->execute(['id' => $matches[1], 'member_id' => $member['id']]);
+        $profile = $profileStatement->fetch();
+        $photoStatement = $pdo->prepare('SELECT path FROM profile_photos WHERE profile_id = :profile_id ORDER BY position ASC');
+        $photoStatement->execute(['profile_id' => $matches[1]]);
+        Response::json(['data' => api_admin_profile_output($profile, $photoStatement->fetchAll())]);
+    }
+
+    if ($method === 'PATCH' && preg_match('#^/v1/member/profiles/([a-f0-9-]{36})/status$#i', $path, $matches)) {
+        api_validate_same_origin();
+        $member = api_require_member($pdo);
+        $status = (string) (api_json_body()['status'] ?? '');
+        if (!in_array($status, ['pending', 'archived'], true)) {
+            Response::error('Ação de perfil inválida.', 422);
+        }
+        $statement = $pdo->prepare('UPDATE profiles SET status = :status, is_featured = 0 WHERE id = :id AND member_id = :member_id');
+        $statement->execute(['status' => $status, 'id' => $matches[1], 'member_id' => $member['id']]);
+        if ($statement->rowCount() === 0) {
+            $exists = $pdo->prepare('SELECT id FROM profiles WHERE id = :id AND member_id = :member_id LIMIT 1');
+            $exists->execute(['id' => $matches[1], 'member_id' => $member['id']]);
+            if (!$exists->fetch()) {
+                Response::error('Perfil não encontrado.', 404);
+            }
+        }
+        $profileStatement = $pdo->prepare('SELECT * FROM profiles WHERE id = :id AND member_id = :member_id LIMIT 1');
+        $profileStatement->execute(['id' => $matches[1], 'member_id' => $member['id']]);
+        $profile = $profileStatement->fetch();
+        $photoStatement = $pdo->prepare('SELECT path FROM profile_photos WHERE profile_id = :profile_id ORDER BY position ASC');
+        $photoStatement->execute(['profile_id' => $matches[1]]);
+        Response::json(['data' => api_admin_profile_output($profile, $photoStatement->fetchAll())]);
     }
 
     if ($method === 'PATCH' && $path === '/v1/member/settings') {
@@ -483,13 +562,17 @@ try {
         $body = api_json_body();
         $allowedStatuses = ['pending', 'active', 'rejected', 'archived'];
         $status = $body['status'] ?? null;
+        $moderationNote = trim((string) ($body['moderation_note'] ?? ''));
         if (!is_string($status) || !in_array($status, $allowedStatuses, true)) {
             Response::error('Status inválido.', 422);
         }
+        if (mb_strlen($moderationNote) > 2000) {
+            Response::error('A observação de moderação é muito longa.', 422);
+        }
         $isFeatured = !empty($body['is_featured']) && $status === 'active' ? 1 : 0;
 
-        $statement = $pdo->prepare('UPDATE profiles SET status = :status, is_featured = :is_featured WHERE id = :id');
-        $statement->execute(['status' => $status, 'is_featured' => $isFeatured, 'id' => $matches[1]]);
+        $statement = $pdo->prepare('UPDATE profiles SET status = :status, is_featured = :is_featured, moderation_note = :moderation_note WHERE id = :id');
+        $statement->execute(['status' => $status, 'is_featured' => $isFeatured, 'moderation_note' => $moderationNote ?: null, 'id' => $matches[1]]);
         if ($statement->rowCount() === 0) {
             $exists = $pdo->prepare('SELECT id FROM profiles WHERE id = :id LIMIT 1');
             $exists->execute(['id' => $matches[1]]);
@@ -501,6 +584,7 @@ try {
         api_audit($pdo, (int) $admin['id'], 'profile_moderated', $matches[1], [
             'status' => $status,
             'is_featured' => (bool) $isFeatured,
+            'has_moderation_note' => $moderationNote !== '',
         ]);
 
         $profileStatement = $pdo->prepare('SELECT * FROM profiles WHERE id = :id LIMIT 1');

@@ -93,11 +93,11 @@ function AdminPage() {
     await loadProfiles(nextStatus)
   }
 
-  const updateProfile = async (profile: ModerationProfile, nextStatus: ProfileStatus, featured = profile.is_featured) => {
+  const updateProfile = async (profile: ModerationProfile, nextStatus: ProfileStatus, featured = profile.is_featured, moderationNote = profile.moderation_note) => {
     setSavingId(profile.id)
     setError('')
     try {
-      await adminApi.updateProfile(profile.id, { status: nextStatus, is_featured: featured })
+      await adminApi.updateProfile(profile.id, { status: nextStatus, is_featured: featured, moderationNote })
       await loadProfiles(status)
       void loadAudit()
     } catch (err) {
@@ -264,8 +264,9 @@ function AdminPage() {
   )
 }
 
-function ProfileCard({ profile, saving, onUpdate }: { profile: ModerationProfile; saving: boolean; onUpdate: (profile: ModerationProfile, status: ProfileStatus, featured?: boolean) => Promise<void> }) {
+function ProfileCard({ profile, saving, onUpdate }: { profile: ModerationProfile; saving: boolean; onUpdate: (profile: ModerationProfile, status: ProfileStatus, featured?: boolean, moderationNote?: string) => Promise<void> }) {
   const date = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(profile.created_at.replace(' ', 'T') + 'Z'))
+  const [moderationNote, setModerationNote] = useState(profile.moderation_note)
   return (
     <article className="overflow-hidden rounded-2xl border border-border bg-card sm:flex">
       <div className="h-48 bg-muted sm:h-auto sm:w-52">
@@ -283,11 +284,12 @@ function ProfileCard({ profile, saving, onUpdate }: { profile: ModerationProfile
         {profile.contact_phone && <p className="mt-3 text-sm font-semibold text-foreground">Contato: {profile.contact_phone}{profile.availability ? ` · ${profile.availability}` : ''}</p>}
         {(profile.services.length > 0 || profile.meeting_places.length > 0 || profile.payment_methods.length > 0) && <p className="mt-3 text-sm text-muted-foreground">{profile.services.join(' · ')}{profile.meeting_places.length > 0 ? ` · ${profile.meeting_places.join(' · ')}` : ''}{profile.payment_methods.length > 0 ? ` · ${profile.payment_methods.join(' · ')}` : ''}</p>}
         {profile.tags.length > 0 && <div className="mt-4 flex flex-wrap gap-2">{profile.tags.map(tag => <span key={tag} className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground">{tag}</span>)}</div>}
+        <label className="mt-4 block text-sm font-semibold text-foreground">Retorno para a modelo<textarea value={moderationNote} onChange={event => setModerationNote(event.target.value)} rows={2} placeholder="Ex.: Ajuste a foto principal e reenvie para análise." className="mt-1.5 w-full rounded-xl border border-input bg-background px-3 py-2 text-sm font-normal outline-none focus:border-ring focus:ring-2 focus:ring-ring/20"/></label>
         <div className="mt-5 flex flex-wrap gap-2 border-t border-border pt-4">
-          {profile.status !== 'active' && <ActionButton disabled={saving} onClick={() => onUpdate(profile, 'active', profile.is_featured)} tone="positive"><Check className="h-4 w-4" /> Publicar</ActionButton>}
-          {profile.status !== 'rejected' && <ActionButton disabled={saving} onClick={() => onUpdate(profile, 'rejected', false)} tone="danger"><X className="h-4 w-4" /> Recusar</ActionButton>}
-          {profile.status === 'active' && <ActionButton disabled={saving} onClick={() => onUpdate(profile, 'active', !profile.is_featured)} tone={profile.is_featured ? 'neutral' : 'highlight'}><Star className={`h-4 w-4 ${profile.is_featured ? 'fill-current' : ''}`} /> {profile.is_featured ? 'Remover destaque' : 'Destacar'}</ActionButton>}
-          {profile.status !== 'archived' && <ActionButton disabled={saving} onClick={() => onUpdate(profile, 'archived', false)} tone="neutral">Arquivar</ActionButton>}
+          {profile.status !== 'active' && <ActionButton disabled={saving} onClick={() => onUpdate(profile, 'active', profile.is_featured, moderationNote)} tone="positive"><Check className="h-4 w-4" /> Publicar</ActionButton>}
+          {profile.status !== 'rejected' && <ActionButton disabled={saving} onClick={() => onUpdate(profile, 'rejected', false, moderationNote)} tone="danger"><X className="h-4 w-4" /> Recusar</ActionButton>}
+          {profile.status === 'active' && <ActionButton disabled={saving} onClick={() => onUpdate(profile, 'active', !profile.is_featured, moderationNote)} tone={profile.is_featured ? 'neutral' : 'highlight'}><Star className={`h-4 w-4 ${profile.is_featured ? 'fill-current' : ''}`} /> {profile.is_featured ? 'Remover destaque' : 'Destacar'}</ActionButton>}
+          {profile.status !== 'archived' && <ActionButton disabled={saving} onClick={() => onUpdate(profile, 'archived', false, moderationNote)} tone="neutral">Arquivar</ActionButton>}
           {saving && <span className="inline-flex items-center gap-2 px-2 py-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Salvando</span>}
         </div>
       </div>

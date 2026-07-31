@@ -39,6 +39,7 @@ export type ProfileStatus = 'pending' | 'active' | 'rejected' | 'archived'
 
 export type ModerationProfile = Profile & {
   status: ProfileStatus
+  moderation_note: string
   created_at: string
   updated_at: string
 }
@@ -160,11 +161,11 @@ export const adminApi = {
     return payload.data
   },
 
-  async updateProfile(id: string, changes: { status: ProfileStatus; is_featured: boolean }): Promise<ModerationProfile> {
+  async updateProfile(id: string, changes: { status: ProfileStatus; is_featured: boolean; moderationNote?: string }): Promise<ModerationProfile> {
     const payload = await request<ApiEnvelope<ModerationProfile>>(`/admin/profiles/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(changes),
+      body: JSON.stringify({ status: changes.status, is_featured: changes.is_featured, moderation_note: changes.moderationNote ?? '' }),
     })
     return payload.data
   },
@@ -183,6 +184,14 @@ export const memberApi = {
   async me(): Promise<Member> { const payload = await request<ApiEnvelope<Member>>('/member/me'); return payload.data },
   async dashboard(): Promise<MemberDashboard> { const payload = await request<ApiEnvelope<MemberDashboard>>('/member/dashboard'); return payload.data },
   async profiles(): Promise<ModerationProfile[]> { const payload = await request<ApiEnvelope<ModerationProfile[]>>('/member/profiles'); return payload.data },
+  async updateProfile(id: string, values: Pick<Profile, 'name' | 'age' | 'category' | 'city' | 'neighborhood' | 'price' | 'contact_phone' | 'availability' | 'description' | 'tags' | 'services' | 'service_for' | 'meeting_places' | 'payment_methods'>): Promise<ModerationProfile> {
+    const payload = await request<ApiEnvelope<ModerationProfile>>(`/member/profiles/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values) })
+    return payload.data
+  },
+  async setProfileStatus(id: string, status: 'pending' | 'archived'): Promise<ModerationProfile> {
+    const payload = await request<ApiEnvelope<ModerationProfile>>(`/member/profiles/${encodeURIComponent(id)}/status`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) })
+    return payload.data
+  },
   async updateSettings(values: { displayName: string; marketingOptIn: boolean }): Promise<Member> { const payload = await request<ApiEnvelope<Member>>('/member/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ display_name: values.displayName, marketing_opt_in: values.marketingOptIn }) }); return payload.data },
   async changePassword(currentPassword: string, newPassword: string): Promise<void> { await request('/member/password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }) }) },
 }

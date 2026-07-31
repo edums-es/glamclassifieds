@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     price_label VARCHAR(80) NOT NULL,
     contact_phone VARCHAR(40) NULL,
     availability VARCHAR(160) NULL,
+    moderation_note TEXT NULL,
     services JSON NULL,
     service_for JSON NULL,
     meeting_places JSON NULL,
