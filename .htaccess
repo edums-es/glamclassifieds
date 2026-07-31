@@ -5,6 +5,9 @@ RewriteEngine On
 # Keep the sitemap dynamic so public profiles are added automatically.
 RewriteRule ^sitemap\.xml$ api/index.php?seo_sitemap=1 [END,QSA]
 
+# These crawler-facing files are emitted inside /dist with the static build.
+RewriteRule ^robots\.txt$ dist/robots.txt [END]
+
 # Keep the PHP API outside the SPA fallback.
 RewriteRule ^api(?:/|$) - [END]
 
