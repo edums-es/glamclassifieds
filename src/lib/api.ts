@@ -1,3 +1,5 @@
+import { publicProfileId } from '@/lib/profile-url'
+
 export type Profile = {
   id: string
   name: string
@@ -76,7 +78,7 @@ export const profilesApi = {
     if (filters.city) search.set('city', filters.city)
     if (filters.category) search.set('category', filters.category)
     const payload = await request<ApiEnvelope<Profile[]>>(`/profiles${search.size ? `?${search}` : ''}`)
-    return payload.data
+    return payload.data.map((profile) => ({ ...profile, id: publicProfileId(profile) }))
   },
 
   async get(id: string): Promise<Profile> {

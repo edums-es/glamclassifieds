@@ -1,7 +1,8 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { profilesApi, type Profile } from '@/lib/api'
 import { SITE_URL } from '@/lib/seo-regions'
+import { publicProfileId } from '@/lib/profile-url'
 import { ArrowLeft, BadgeCheck, CheckCircle2, Flag, Heart, MapPin, Phone, Share2, ShieldCheck, Sparkles } from 'lucide-react'
 
 export const Route = createFileRoute('/profile/$id')({
@@ -23,6 +24,7 @@ export const Route = createFileRoute('/profile/$id')({
 
 function ProfilePage() {
   const { id } = Route.useParams()
+  const navigate = useNavigate()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const [liked, setLiked] = useState(false)
@@ -30,10 +32,17 @@ function ProfilePage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    try { setProfile(await profilesApi.get(id)) }
+    try {
+      const loaded = await profilesApi.get(id)
+      setProfile(loaded)
+      const friendlyId = publicProfileId(loaded)
+      if (id !== friendlyId) {
+        await navigate({ to: '/profile/$id', params: { id: friendlyId }, replace: true })
+      }
+    }
     catch (error) { console.error('Não foi possível carregar o perfil:', error); setProfile(null) }
     finally { setLoading(false) }
-  }, [id])
+  }, [id, navigate])
   useEffect(() => { void load() }, [load])
 
   const share = async () => {
@@ -51,7 +60,7 @@ function ProfilePage() {
     '@context': 'https://schema.org',
     '@type': 'Person',
     name: profile.name,
-    url: `${SITE_URL}/profile/${encodeURIComponent(profile.id)}`,
+    url: `${SITE_URL}/profile/${encodeURIComponent(publicProfileId(profile))}`,
     address: { '@type': 'PostalAddress', addressLocality: profile.city, addressCountry: 'BR' },
     description: profile.description,
     image: profile.photos,

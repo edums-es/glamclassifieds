@@ -127,6 +127,22 @@ function api_xml_escape(string $value): string
     return htmlspecialchars($value, ENT_XML1 | ENT_QUOTES, 'UTF-8');
 }
 
+function api_slugify(string $value): string
+{
+    $transliterated = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $value);
+    $value = $transliterated === false ? $value : $transliterated;
+    $value = strtolower($value);
+    $value = preg_replace('/[^a-z0-9]+/', '-', $value) ?? '';
+    $value = trim($value, '-');
+    return substr($value, 0, 72) ?: 'perfil';
+}
+
+function api_public_profile_path(array $profile): string
+{
+    $suffix = substr(str_replace('-', '', (string) $profile['id']), -12);
+    return '/profile/' . api_slugify((string) $profile['display_name']) . '-' . api_slugify((string) $profile['city']) . '-' . $suffix;
+}
+
 function api_serve_sitemap(PDO $pdo): never
 {
     $baseUrl = 'https://thesex.online';
@@ -153,7 +169,7 @@ function api_serve_sitemap(PDO $pdo): never
     $profiles = $pdo->query("SELECT id, updated_at FROM profiles WHERE status = 'active' ORDER BY updated_at DESC LIMIT 50000");
     foreach ($profiles->fetchAll() as $profile) {
         $urls[] = [
-            'loc' => $baseUrl . '/profile/' . rawurlencode((string) $profile['id']),
+            'loc' => $baseUrl . api_public_profile_path($profile),
             'lastmod' => substr((string) $profile['updated_at'], 0, 10),
             'changefreq' => 'weekly',
             'priority' => '0.7',
@@ -689,9 +705,17 @@ try {
         Response::json(['data' => $data]);
     }
 
-    if ($method === 'GET' && preg_match('#^/v1/profiles/([a-f0-9-]{36})$#i', $path, $matches)) {
-        $statement = $pdo->prepare('SELECT * FROM profiles WHERE id = :id AND status = "active" LIMIT 1');
-        $statement->execute(['id' => $matches[1]]);
+    if ($method === 'GET' && preg_match('#^/v1/profiles/([^/]+)$#i', $path, $matches)) {
+        $identifier = strtolower($matches[1]);
+        if (preg_match('/^[a-f0-9-]{36}$/', $identifier)) {
+            $statement = $pdo->prepare('SELECT * FROM profiles WHERE id = :id AND status = "active" LIMIT 1');
+            $statement->execute(['id' => $identifier]);
+        } elseif (preg_match('/([a-f0-9]{12})$/', $identifier, $suffix)) {
+            $statement = $pdo->prepare('SELECT * FROM profiles WHERE REPLACE(id, "-", "") LIKE :suffix AND status = "active" LIMIT 1');
+            $statement->execute(['suffix' => '%' . $suffix[1]]);
+        } else {
+            Response::error('Perfil não encontrado.', 404);
+        }
         $profile = $statement->fetch();
         if (!$profile) {
             Response::error('Perfil não encontrado.', 404);
