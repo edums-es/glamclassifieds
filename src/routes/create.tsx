@@ -3,7 +3,7 @@ import { useState, type ReactNode } from 'react'
 import { profilesApi } from '@/lib/api'
 import { ArrowLeft, BadgeCheck, CheckCircle2, ImagePlus, Loader2, LockKeyhole, Phone, ShieldCheck, X } from 'lucide-react'
 
-const CATEGORY_OPTIONS = ['Acompanhante', 'Massagem', 'Trans e Travesti', 'Encontro casual', 'Modelo independente']
+const CATEGORY_OPTIONS = ['Acompanhante', 'Massagem', 'Trans e Travesti', 'Encontro casual']
 const TAG_OPTIONS = ['VIP', 'Viagens', 'Jantares', 'Eventos', 'Bilíngue', 'Fitness', 'Bem-estar', 'Lifestyle']
 const SERVICE_OPTIONS = ['Atendimento personalizado', 'Companhia para eventos', 'Jantares', 'Massagem', 'Viagens', 'Conteúdo online']
 const SERVICE_FOR_OPTIONS = ['Homens', 'Mulheres', 'Casais', 'Pessoas trans']
@@ -11,7 +11,7 @@ const MEETING_PLACE_OPTIONS = ['Local próprio', 'Hotel ou motel', 'Domicílio',
 const PAYMENT_OPTIONS = ['Pix', 'Dinheiro', 'Cartão', 'Transferência']
 
 export const Route = createFileRoute('/create')({
-  head: () => ({ meta: [{ title: 'Cadastrar modelo · TheSex' }, { name: 'description', content: 'Envie um perfil para análise privada.' }] }),
+  head: () => ({ meta: [{ title: 'Cadastrar perfil · TheSex' }, { name: 'description', content: 'Envie um perfil para análise privada.' }] }),
   component: CreateProfilePage,
 })
 
@@ -76,7 +76,7 @@ function CreateProfilePage() {
       <header className="border-b border-pink-100 bg-white"><div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6"><Link to="/" className="text-xl font-black tracking-tight text-pink-600">the<span className="text-slate-900">sex</span></Link><Link to="/" className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-pink-600"><ArrowLeft className="h-4 w-4" /> Voltar à vitrine</Link></div></header>
       <section className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:px-6 lg:grid-cols-[0.8fr_1.2fr] lg:py-14">
         <aside className="rounded-3xl bg-gradient-to-br from-pink-600 via-fuchsia-600 to-violet-700 p-7 text-white shadow-xl shadow-pink-700/20 sm:p-9">
-          <BadgeCheck className="h-9 w-9" /><p className="mt-8 text-sm font-semibold uppercase tracking-[0.2em] text-pink-100">Cadastro de modelos</p><h1 className="mt-3 text-3xl font-black leading-tight">Seu perfil, sua vitrine, no seu ritmo.</h1><p className="mt-5 text-sm leading-6 text-pink-50">Envie informações e fotos. A publicação acontece somente após a análise do painel administrativo.</p>
+          <BadgeCheck className="h-9 w-9" /><p className="mt-8 text-sm font-semibold uppercase tracking-[0.2em] text-pink-100">Cadastro de perfis</p><h1 className="mt-3 text-3xl font-black leading-tight">Seu perfil, sua vitrine, no seu ritmo.</h1><p className="mt-5 text-sm leading-6 text-pink-50">Envie informações e fotos. A publicação acontece somente após a análise do painel administrativo.</p>
           <div className="mt-8 space-y-4 text-sm"><p className="flex gap-3"><ShieldCheck className="h-5 w-5 shrink-0" /> Revisão antes de qualquer publicação</p><p className="flex gap-3"><LockKeyhole className="h-5 w-5 shrink-0" /> Dados enviados em área protegida</p><p className="flex gap-3"><Phone className="h-5 w-5 shrink-0" /> Contato exibido apenas no perfil aprovado</p></div>
         </aside>
         <form onSubmit={submit} className="model-form rounded-3xl border border-pink-100 bg-white p-6 shadow-sm sm:p-9">

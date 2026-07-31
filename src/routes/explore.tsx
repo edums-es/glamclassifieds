@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, ArrowRight, MapPin, Search, SlidersHorizontal, X } from 'lucide-react'
 import { profilesApi, type Profile } from '@/lib/api'
 
-const CATEGORIES = ['Acompanhante', 'Massagem', 'Trans e Travesti', 'Encontro casual', 'Modelo independente']
+const CATEGORIES = ['Acompanhante', 'Massagem', 'Trans e Travesti', 'Encontro casual']
 const POPULAR_CITIES = ['São Paulo', 'Rio de Janeiro', 'Belo Horizonte', 'Curitiba', 'Brasília', 'Salvador']
 
 export const Route = createFileRoute('/explore')({

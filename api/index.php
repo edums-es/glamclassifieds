@@ -200,6 +200,9 @@ function api_migrate_profiles(PDO $pdo): void
         }
     }
 
+    // Converte eventuais valores antigos para a taxonomia pública atual.
+    $pdo->exec("UPDATE profiles SET category = 'Acompanhante' WHERE category NOT IN ('Acompanhante', 'Massagem', 'Trans e Travesti', 'Encontro casual')");
+
     $migrated = true;
 }
 
@@ -369,7 +372,7 @@ try {
         $serviceFor = $body['service_for'] ?? [];
         $meetingPlaces = $body['meeting_places'] ?? [];
         $paymentMethods = $body['payment_methods'] ?? [];
-        $allowedCategories = ['Acompanhante', 'Massagem', 'Trans e Travesti', 'Encontro casual', 'Modelo independente'];
+        $allowedCategories = ['Acompanhante', 'Massagem', 'Trans e Travesti', 'Encontro casual'];
         $lists = [$tags, $services, $serviceFor, $meetingPlaces, $paymentMethods];
         $invalidList = false;
         foreach ($lists as $list) {
@@ -662,7 +665,7 @@ try {
         if ($honeypot !== '') {
             Response::json(['message' => 'Solicitação recebida.'], 201);
         }
-        $allowedCategories = ['Acompanhante', 'Massagem', 'Trans e Travesti', 'Encontro casual', 'Modelo independente'];
+        $allowedCategories = ['Acompanhante', 'Massagem', 'Trans e Travesti', 'Encontro casual'];
         $profileLists = [$tags, $services, $serviceFor, $meetingPlaces, $paymentMethods];
         $invalidList = array_filter($profileLists, static function ($list): bool {
             if (!is_array($list) || count($list) > 12) {
