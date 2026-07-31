@@ -166,7 +166,7 @@ function api_serve_sitemap(PDO $pdo): never
         ];
     }
 
-    $profiles = $pdo->query("SELECT id, updated_at FROM profiles WHERE status = 'active' ORDER BY updated_at DESC LIMIT 50000");
+    $profiles = $pdo->query("SELECT id, display_name, city, updated_at FROM profiles WHERE status = 'active' ORDER BY updated_at DESC LIMIT 50000");
     foreach ($profiles->fetchAll() as $profile) {
         $urls[] = [
             'loc' => $baseUrl . api_public_profile_path($profile),
