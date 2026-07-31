@@ -1,8 +1,16 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, Link as RouterLink } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowRight, MapPin, Search } from 'lucide-react'
 import { profilesApi, type Profile } from '@/lib/api'
 import { getSeoRegion, SEO_REGIONS, SITE_URL } from '@/lib/seo-regions'
+
+function Link(props: any) {
+  if (props.to === '/profile/$id' && typeof props.params?.id === 'string' && props.params.id.startsWith('/')) {
+    const { to: _to, params: _params, ...anchorProps } = props
+    return <a href={_params.id} {...anchorProps} />
+  }
+  return <RouterLink {...props} />
+}
 
 export const Route = createFileRoute('/$region')({
   head: ({ params }) => {

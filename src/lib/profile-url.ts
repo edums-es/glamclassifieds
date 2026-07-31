@@ -12,9 +12,24 @@ function slugify(value: string): string {
 
 export function publicProfileId(profile: Pick<Profile, 'id' | 'name' | 'city'>): string {
   const technicalSuffix = profile.id.replace(/-/g, '').slice(-12)
-  return `${slugify(profile.name)}-${slugify(profile.city)}-${technicalSuffix}`
+  return `${slugify(profile.name)}-${technicalSuffix}`
 }
 
-export function publicProfilePath(profile: Pick<Profile, 'id' | 'name' | 'city'>): string {
-  return `/profile/${publicProfileId(profile)}`
+export const PUBLIC_CATEGORY_PATHS: Record<string, string> = {
+    Acompanhante: 'acompanhantes',
+    Massagem: 'massagens',
+    'Trans e Travesti': 'trans-e-travestis',
+    'Encontro casual': 'encontros-casuais',
+}
+
+export function publicCategorySlug(category: string): string {
+  return PUBLIC_CATEGORY_PATHS[category] ?? 'perfis'
+}
+
+export function isPublicCategorySlug(value: string): boolean {
+  return Object.values(PUBLIC_CATEGORY_PATHS).includes(value)
+}
+
+export function publicProfilePath(profile: Pick<Profile, 'id' | 'name' | 'city' | 'category'>): string {
+  return `/${publicCategorySlug(profile.category)}/${slugify(profile.city)}/${publicProfileId(profile)}`
 }

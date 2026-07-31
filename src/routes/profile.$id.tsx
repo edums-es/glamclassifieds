@@ -1,8 +1,8 @@
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { profilesApi, type Profile } from '@/lib/api'
 import { SITE_URL } from '@/lib/seo-regions'
-import { publicProfileId } from '@/lib/profile-url'
+import { publicProfilePath } from '@/lib/profile-url'
 import { ArrowLeft, BadgeCheck, CheckCircle2, Flag, Heart, MapPin, Phone, Share2, ShieldCheck, Sparkles } from 'lucide-react'
 
 export const Route = createFileRoute('/profile/$id')({
@@ -12,7 +12,7 @@ export const Route = createFileRoute('/profile/$id')({
       meta: [
         { title: 'Perfil | TheSex' },
         { name: 'description', content: 'Informações, fotos e formas de contato de um perfil publicado.' },
-        { name: 'robots', content: 'index,follow,max-image-preview:large' },
+        { name: 'robots', content: 'noindex, nofollow' },
         { property: 'og:type', content: 'profile' },
         { property: 'og:url', content: canonical },
       ],
@@ -24,7 +24,10 @@ export const Route = createFileRoute('/profile/$id')({
 
 function ProfilePage() {
   const { id } = Route.useParams()
-  const navigate = useNavigate()
+  return <PublicProfilePage id={id} legacy />
+}
+
+export function PublicProfilePage({ id, legacy = false }: { id: string; legacy?: boolean }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const [liked, setLiked] = useState(false)
@@ -35,14 +38,15 @@ function ProfilePage() {
     try {
       const loaded = await profilesApi.get(id)
       setProfile(loaded)
-      const friendlyId = publicProfileId(loaded)
-      if (id !== friendlyId) {
-        await navigate({ to: '/profile/$id', params: { id: friendlyId }, replace: true })
+      const canonicalPath = publicProfilePath(loaded)
+      if (window.location.pathname !== canonicalPath) {
+        window.location.replace(canonicalPath)
+        return
       }
     }
     catch (error) { console.error('Não foi possível carregar o perfil:', error); setProfile(null) }
     finally { setLoading(false) }
-  }, [id, navigate])
+  }, [id, legacy])
   useEffect(() => { void load() }, [load])
 
   const share = async () => {
@@ -60,7 +64,7 @@ function ProfilePage() {
     '@context': 'https://schema.org',
     '@type': 'Person',
     name: profile.name,
-    url: `${SITE_URL}/profile/${encodeURIComponent(publicProfileId(profile))}`,
+    url: `${SITE_URL}${publicProfilePath(profile)}`,
     address: { '@type': 'PostalAddress', addressLocality: profile.city, addressCountry: 'BR' },
     description: profile.description,
     image: profile.photos,

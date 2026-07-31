@@ -1,10 +1,18 @@
-import { createFileRoute, Link, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Link as RouterLink, useNavigate } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, ArrowRight, CheckCircle2, MapPin, Phone, Search, X } from 'lucide-react'
 import { profilesApi, type Profile } from '@/lib/api'
 
 const CATEGORIES = ['Acompanhante', 'Massagem', 'Trans e Travesti', 'Encontro casual']
 const POPULAR_CITIES = ['São Paulo', 'Rio de Janeiro', 'Belo Horizonte', 'Curitiba', 'Brasília', 'Salvador']
+
+function Link(props: any) {
+  if (props.to === '/profile/$id' && typeof props.params?.id === 'string' && props.params.id.startsWith('/')) {
+    const { to: _to, params: _params, ...anchorProps } = props
+    return <a href={_params.id} {...anchorProps} />
+  }
+  return <RouterLink {...props} />
+}
 
 export const Route = createFileRoute('/explore')({
   validateSearch: (search: Record<string, unknown>) => ({ q: typeof search.q === 'string' ? search.q : '', city: typeof search.city === 'string' ? search.city : '', category: typeof search.category === 'string' ? search.category : '' }),

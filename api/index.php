@@ -140,7 +140,14 @@ function api_slugify(string $value): string
 function api_public_profile_path(array $profile): string
 {
     $suffix = substr(str_replace('-', '', (string) $profile['id']), -12);
-    return '/profile/' . api_slugify((string) $profile['display_name']) . '-' . api_slugify((string) $profile['city']) . '-' . $suffix;
+    $categories = [
+        'Acompanhante' => 'acompanhantes',
+        'Massagem' => 'massagens',
+        'Trans e Travesti' => 'trans-e-travestis',
+        'Encontro casual' => 'encontros-casuais',
+    ];
+    $category = $categories[(string) ($profile['category'] ?? '')] ?? 'perfis';
+    return '/' . $category . '/' . api_slugify((string) $profile['city']) . '/' . api_slugify((string) $profile['display_name']) . '-' . $suffix;
 }
 
 function api_serve_sitemap(PDO $pdo): never
@@ -166,7 +173,7 @@ function api_serve_sitemap(PDO $pdo): never
         ];
     }
 
-    $profiles = $pdo->query("SELECT id, display_name, city, updated_at FROM profiles WHERE status = 'active' ORDER BY updated_at DESC LIMIT 50000");
+    $profiles = $pdo->query("SELECT id, display_name, category, city, updated_at FROM profiles WHERE status = 'active' ORDER BY updated_at DESC LIMIT 50000");
     foreach ($profiles->fetchAll() as $profile) {
         $urls[] = [
             'loc' => $baseUrl . api_public_profile_path($profile),

@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute, Link as RouterLink } from '@tanstack/react-router'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { profilesApi, type Profile } from '@/lib/api'
 import { SEO_REGIONS } from '@/lib/seo-regions'
@@ -12,6 +12,14 @@ const DISCOVER = [
 ]
 const CITY_LINKS = ['São Paulo', 'Rio de Janeiro', 'Belo Horizonte', 'Curitiba', 'Brasília', 'Salvador']
 const CATEGORY_FILTERS: Record<string, string> = { Acompanhantes: 'Acompanhante', Massagens: 'Massagem', 'Trans e Travesti': 'Trans e Travesti', 'Encontro casual': 'Encontro casual' }
+
+function Link(props: any) {
+  if (props.to === '/profile/$id' && typeof props.params?.id === 'string' && props.params.id.startsWith('/')) {
+    const { to: _to, params: _params, ...anchorProps } = props
+    return <a href={_params.id} {...anchorProps} />
+  }
+  return <RouterLink {...props} />
+}
 
 export const Route = createFileRoute('/')({
   head: () => ({ meta: [{ title: 'TheSex — Perfis independentes' }, { name: 'description', content: 'Encontre perfis por cidade, categoria e disponibilidade.' }] }),
