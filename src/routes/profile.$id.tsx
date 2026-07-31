@@ -1,10 +1,23 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { profilesApi, type Profile } from '@/lib/api'
+import { SITE_URL } from '@/lib/seo-regions'
 import { ArrowLeft, BadgeCheck, CheckCircle2, Flag, Heart, MapPin, Phone, Share2, ShieldCheck, Sparkles } from 'lucide-react'
 
 export const Route = createFileRoute('/profile/$id')({
-  head: () => ({ meta: [{ title: 'Perfil · TheSex' }, { name: 'description', content: 'Informações, fotos e formas de contato de um perfil publicado.' }] }),
+  head: ({ params }) => {
+    const canonical = `${SITE_URL}/profile/${encodeURIComponent(params.id)}`
+    return {
+      meta: [
+        { title: 'Perfil | TheSex' },
+        { name: 'description', content: 'Informações, fotos e formas de contato de um perfil publicado.' },
+        { name: 'robots', content: 'index,follow,max-image-preview:large' },
+        { property: 'og:type', content: 'profile' },
+        { property: 'og:url', content: canonical },
+      ],
+      links: [{ rel: 'canonical', href: canonical }],
+    }
+  },
   component: ProfilePage,
 })
 
@@ -34,7 +47,17 @@ function ProfilePage() {
   if (!profile) return <NotFound />
 
   const phone = profile.contact_phone.replace(/\D/g, '')
+  const profileSchema = JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'Person',
+    name: profile.name,
+    url: `${SITE_URL}/profile/${encodeURIComponent(profile.id)}`,
+    address: { '@type': 'PostalAddress', addressLocality: profile.city, addressCountry: 'BR' },
+    description: profile.description,
+    image: profile.photos,
+  }).replace(/</g, '\\u003c')
   return <main className="min-h-dvh bg-[#fdfcfb] text-[#252429]">
+    <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: profileSchema }} />
     <div className="h-1.5 bg-[#c51f69]" />
     <header className="border-b border-[#ece7e3] bg-white"><div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3 sm:px-6"><Link to="/" className="text-lg font-black tracking-tight text-[#c51f69]">the<span className="text-[#28252a]">sex</span></Link><Link to="/create" className="rounded-md bg-[#438aca] px-3.5 py-2 text-xs font-bold text-white transition hover:bg-[#3478b6]">PUBLICAR PERFIL</Link></div></header>
     <article className="mx-auto max-w-4xl px-4 pb-16 pt-5 sm:px-6">

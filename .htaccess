@@ -2,6 +2,9 @@ Options -Indexes
 DirectoryIndex dist/index.html
 RewriteEngine On
 
+# Keep the sitemap dynamic so public profiles are added automatically.
+RewriteRule ^sitemap\.xml$ api/index.php?seo_sitemap=1 [END,QSA]
+
 # Keep the PHP API outside the SPA fallback.
 RewriteRule ^api(?:/|$) - [END]
 

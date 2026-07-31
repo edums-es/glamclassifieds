@@ -122,6 +122,60 @@ function api_profile_output(array $profile, array $photos): array
     ];
 }
 
+function api_xml_escape(string $value): string
+{
+    return htmlspecialchars($value, ENT_XML1 | ENT_QUOTES, 'UTF-8');
+}
+
+function api_serve_sitemap(PDO $pdo): never
+{
+    $baseUrl = 'https://thesex.online';
+    $regions = [
+        'sao-paulo', 'rio-de-janeiro', 'belo-horizonte', 'brasilia', 'curitiba',
+        'salvador', 'porto-alegre', 'recife', 'fortaleza', 'goiania',
+    ];
+    $urls = [[
+        'loc' => $baseUrl . '/',
+        'lastmod' => gmdate('Y-m-d'),
+        'changefreq' => 'daily',
+        'priority' => '1.0',
+    ]];
+
+    foreach ($regions as $region) {
+        $urls[] = [
+            'loc' => $baseUrl . '/' . $region,
+            'lastmod' => gmdate('Y-m-d'),
+            'changefreq' => $region === 'sao-paulo' || $region === 'rio-de-janeiro' ? 'daily' : 'weekly',
+            'priority' => $region === 'sao-paulo' || $region === 'rio-de-janeiro' ? '0.9' : '0.8',
+        ];
+    }
+
+    $profiles = $pdo->query("SELECT id, updated_at FROM profiles WHERE status = 'active' ORDER BY updated_at DESC LIMIT 50000");
+    foreach ($profiles->fetchAll() as $profile) {
+        $urls[] = [
+            'loc' => $baseUrl . '/profile/' . rawurlencode((string) $profile['id']),
+            'lastmod' => substr((string) $profile['updated_at'], 0, 10),
+            'changefreq' => 'weekly',
+            'priority' => '0.7',
+        ];
+    }
+
+    header('Content-Type: application/xml; charset=UTF-8');
+    header('X-Content-Type-Options: nosniff');
+    echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
+    echo '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n";
+    foreach ($urls as $url) {
+        echo "  <url>\n";
+        echo '    <loc>' . api_xml_escape($url['loc']) . "</loc>\n";
+        echo '    <lastmod>' . api_xml_escape($url['lastmod']) . "</lastmod>\n";
+        echo '    <changefreq>' . api_xml_escape($url['changefreq']) . "</changefreq>\n";
+        echo '    <priority>' . api_xml_escape($url['priority']) . "</priority>\n";
+        echo "  </url>\n";
+    }
+    echo "</urlset>\n";
+    exit;
+}
+
 function api_start_member_session(): void
 {
     if (session_status() === PHP_SESSION_ACTIVE) {
@@ -269,6 +323,10 @@ try {
     $pdo = Database::connect();
     api_migrate_members($pdo);
     api_migrate_profiles($pdo);
+
+    if ($method === 'GET' && ($_GET['seo_sitemap'] ?? '') === '1') {
+        api_serve_sitemap($pdo);
+    }
 
     if (str_starts_with($path, '/v1/admin/')) {
         api_start_admin_session();

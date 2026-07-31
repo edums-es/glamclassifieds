@@ -13,6 +13,7 @@ import { Route as MemberRouteImport } from './routes/member'
 import { Route as ExploreRouteImport } from './routes/explore'
 import { Route as CreateRouteImport } from './routes/create'
 import { Route as AdminRouteImport } from './routes/admin'
+import { Route as RegionRouteImport } from './routes/$region'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProfileIdRouteImport } from './routes/profile.$id'
 
@@ -36,6 +37,11 @@ const AdminRoute = AdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RegionRoute = RegionRouteImport.update({
+  id: '/$region',
+  path: '/$region',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -49,6 +55,7 @@ const ProfileIdRoute = ProfileIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/$region': typeof RegionRoute
   '/admin': typeof AdminRoute
   '/create': typeof CreateRoute
   '/explore': typeof ExploreRoute
@@ -57,6 +64,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/$region': typeof RegionRoute
   '/admin': typeof AdminRoute
   '/create': typeof CreateRoute
   '/explore': typeof ExploreRoute
@@ -66,6 +74,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/$region': typeof RegionRoute
   '/admin': typeof AdminRoute
   '/create': typeof CreateRoute
   '/explore': typeof ExploreRoute
@@ -75,12 +84,26 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/admin' | '/create' | '/explore' | '/member' | '/profile/$id'
+    | '/'
+    | '/$region'
+    | '/admin'
+    | '/create'
+    | '/explore'
+    | '/member'
+    | '/profile/$id'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/admin' | '/create' | '/explore' | '/member' | '/profile/$id'
+  to:
+    | '/'
+    | '/$region'
+    | '/admin'
+    | '/create'
+    | '/explore'
+    | '/member'
+    | '/profile/$id'
   id:
     | '__root__'
     | '/'
+    | '/$region'
     | '/admin'
     | '/create'
     | '/explore'
@@ -90,6 +113,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  RegionRoute: typeof RegionRoute
   AdminRoute: typeof AdminRoute
   CreateRoute: typeof CreateRoute
   ExploreRoute: typeof ExploreRoute
@@ -127,6 +151,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/$region': {
+      id: '/$region'
+      path: '/$region'
+      fullPath: '/$region'
+      preLoaderRoute: typeof RegionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -146,6 +177,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  RegionRoute: RegionRoute,
   AdminRoute: AdminRoute,
   CreateRoute: CreateRoute,
   ExploreRoute: ExploreRoute,
