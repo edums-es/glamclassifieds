@@ -22,7 +22,7 @@ function Link(props: any) {
 }
 
 export const Route = createFileRoute('/')({
-  head: () => ({ meta: [{ title: 'TheSex — Perfis independentes' }, { name: 'description', content: 'Encontre perfis por cidade, categoria e disponibilidade.' }] }),
+  head: () => ({ meta: [{ title: 'Acompanhantes, Escorts e Garotas de Programa | TheSex' }, { name: 'description', content: 'Encontre acompanhantes, escorts, garotas de programa e encontros casuais na sua cidade. Perfis, fotos e contato direto.' }, { name: 'keywords', content: 'acompanhantes, escorts, garotas de programa, acompanhantes de luxo, sexo casual, encontros casuais' }] }),
   component: Home,
 })
 
