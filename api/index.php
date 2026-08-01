@@ -773,12 +773,9 @@ try {
 
         $ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
         $ipHash = hash('sha256', $ip . (Config::get('DB_PASSWORD') ?? ''));
-        $limit = $pdo->prepare('SELECT last_submitted_at FROM submission_limits WHERE ip_hash = :ip_hash LIMIT 1');
-        $limit->execute(['ip_hash' => $ipHash]);
-        $lastSubmission = $limit->fetchColumn();
-        if ($lastSubmission && strtotime((string) $lastSubmission) > strtotime('-24 hours')) {
-            Response::error('Você já enviou um perfil recentemente. Aguarde a análise.', 429);
-        }
+        // A member may operate any number of distinct public profiles. The form
+        // disables repeated submissions while uploading, so there is no IP-wide
+        // cooldown that could block legitimate profiles on the same connection.
 
         $files = $_FILES['photos'] ?? null;
         $photoCount = is_array($files['name'] ?? null) ? count($files['name']) : 0;
@@ -818,7 +815,6 @@ try {
             foreach ($paths as $position => $filePath) {
                 $photo->execute(['profile_id' => $id, 'path' => $filePath, 'position' => $position]);
             }
-            $pdo->prepare('INSERT INTO submission_limits (ip_hash) VALUES (:ip_hash) ON DUPLICATE KEY UPDATE last_submitted_at = CURRENT_TIMESTAMP')->execute(['ip_hash' => $ipHash]);
             $pdo->commit();
         } catch (Throwable $exception) {
             if ($pdo->inTransaction()) {
