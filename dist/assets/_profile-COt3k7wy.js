@@ -1,1 +1,0 @@
-import{E as e,n as t,t as n}from"./index-DUmGkt1N.js";var r=e();function i(){let{profile:e}=n.useParams();return(0,r.jsx)(t,{id:e})}export{i as component};
