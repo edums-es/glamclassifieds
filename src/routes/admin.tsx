@@ -27,7 +27,7 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { adminApi, type Admin, type AuditLog, type ModerationProfile, type ProfileStatus } from '@/lib/api'
+import { adminApi, type Admin, type AdminMember, type AdminMetrics, type AuditLog, type ModerationProfile, type ProfileStatus } from '@/lib/api'
 
 const STATUS_OPTIONS: { value: ProfileStatus; label: string; description: string; tone: string }[] = [
   { value: 'pending', label: 'Para revisar', description: 'Aguardando análise', tone: 'bg-amber-50 text-amber-800 ring-amber-200' },
@@ -55,10 +55,13 @@ function AdminPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [passwordVisible, setPasswordVisible] = useState(false)
-  const [activeSection, setActiveSection] = useState<'overview' | 'queue' | 'activity' | 'security'>('overview')
+  const [activeSection, setActiveSection] = useState<'overview' | 'queue' | 'members' | 'activity' | 'security'>('overview')
   const [status, setStatus] = useState<ProfileStatus>('pending')
   const [profilesByStatus, setProfilesByStatus] = useState<Record<ProfileStatus, ModerationProfile[]>>(EMPTY_PROFILES)
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
+  const [metrics, setMetrics] = useState<AdminMetrics | null>(null)
+  const [members, setMembers] = useState<AdminMember[]>([])
+  const [memberQuery, setMemberQuery] = useState('')
   const [query, setQuery] = useState('')
   const [checking, setChecking] = useState(true)
   const [loading, setLoading] = useState(false)
@@ -72,15 +75,19 @@ function AdminPage() {
     setLoading(true)
     setError('')
     try {
-      const [pending, active, rejected, archived, audit] = await Promise.all([
+      const [pending, active, rejected, archived, audit, nextMetrics, nextMembers] = await Promise.all([
         adminApi.listProfiles('pending'),
         adminApi.listProfiles('active'),
         adminApi.listProfiles('rejected'),
         adminApi.listProfiles('archived'),
         adminApi.audit().catch(() => []),
+        adminApi.metrics(),
+        adminApi.members(),
       ])
       setProfilesByStatus({ pending, active, rejected, archived })
       setAuditLogs(audit)
+      setMetrics(nextMetrics)
+      setMembers(nextMembers)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível carregar a central administrativa.')
     } finally {
@@ -98,6 +105,11 @@ function AdminPage() {
       .finally(() => setChecking(false))
   }, [])
 
+  useEffect(() => {
+    const refreshTimer = window.setInterval(() => { if (admin) void loadWorkspace() }, 30000)
+    return () => window.clearInterval(refreshTimer)
+  }, [admin])
+
   const handleLogin = async (event: React.FormEvent) => {
     event.preventDefault()
     setLoading(true)
@@ -113,11 +125,11 @@ function AdminPage() {
     }
   }
 
-  const updateProfile = async (profile: ModerationProfile, nextStatus: ProfileStatus, featured = profile.is_featured, moderationNote = profile.moderation_note) => {
+  const updateProfile = async (profile: ModerationProfile, nextStatus: ProfileStatus, featured = profile.is_featured, moderationNote = profile.moderation_note, autoApproved = profile.auto_approved) => {
     setSavingId(profile.id)
     setError('')
     try {
-      await adminApi.updateProfile(profile.id, { status: nextStatus, is_featured: featured, moderationNote })
+      await adminApi.updateProfile(profile.id, { status: nextStatus, is_featured: featured, moderationNote, autoApproved })
       await loadWorkspace()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Não foi possível atualizar o perfil.')
@@ -133,6 +145,8 @@ function AdminPage() {
       setAdmin(null)
       setProfilesByStatus(EMPTY_PROFILES)
       setAuditLogs([])
+      setMembers([])
+      setMetrics(null)
       setError('')
     }
   }
@@ -179,6 +193,7 @@ function AdminPage() {
   const navItems: { id: typeof activeSection; label: string; icon: typeof LayoutDashboard; badge?: number }[] = [
     { id: 'overview', label: 'Visão geral', icon: LayoutDashboard },
     { id: 'queue', label: 'Moderação', icon: ShieldCheck, badge: counts.pending },
+    { id: 'members', label: 'Contas', icon: Users, badge: metrics?.members },
     { id: 'activity', label: 'Atividade', icon: Activity },
     { id: 'security', label: 'Segurança', icon: LockKeyhole },
   ]
@@ -222,7 +237,7 @@ function AdminPage() {
             <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[.17em] text-fuchsia-700">Central de confiança</p>
-                <h1 className="mt-1 text-xl font-extrabold tracking-tight sm:text-2xl">{activeSection === 'overview' ? 'Visão geral' : activeSection === 'queue' ? 'Fila de moderação' : activeSection === 'activity' ? 'Histórico operacional' : 'Segurança da conta'}</h1>
+                <h1 className="mt-1 text-xl font-extrabold tracking-tight sm:text-2xl">{activeSection === 'overview' ? 'Visão geral' : activeSection === 'queue' ? 'Fila de moderação' : activeSection === 'members' ? 'Contas e proprietários' : activeSection === 'activity' ? 'Histórico operacional' : 'Segurança da conta'}</h1>
               </div>
               <button type="button" onClick={() => void loadWorkspace()} disabled={loading} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-bold shadow-sm transition hover:border-slate-400 disabled:opacity-60"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /><span className="hidden sm:inline">Atualizar dados</span></button>
             </div>
@@ -230,8 +245,9 @@ function AdminPage() {
 
           <section className="mx-auto max-w-7xl px-5 py-7 lg:px-9 lg:py-9">
             {error && <div className="mb-5"><ErrorNotice message={error} /></div>}
-            {activeSection === 'overview' && <Overview counts={counts} profiles={latestProfiles} loading={loading} onModerate={() => setActiveSection('queue')} onActivity={() => setActiveSection('activity')} />}
+            {activeSection === 'overview' && <Overview counts={counts} metrics={metrics} profiles={latestProfiles} loading={loading} onModerate={() => setActiveSection('queue')} onActivity={() => setActiveSection('activity')} />}
             {activeSection === 'queue' && <ModerationQueue status={status} query={query} profiles={queuedProfiles} total={profilesByStatus[status].length} savingId={savingId} loading={loading} onStatus={setStatus} onQuery={setQuery} onUpdate={updateProfile} />}
+            {activeSection === 'members' && <MembersPanel members={members} query={memberQuery} loading={loading} onQuery={setMemberQuery} onReload={async (value) => { setLoading(true); try { setMembers(await adminApi.members(value)) } finally { setLoading(false) } }} onSave={async (member, values) => { await adminApi.updateMember(member.id, values); await loadWorkspace() }} />}
             {activeSection === 'activity' && <ActivityPanel logs={auditLogs} loading={loading} onRefresh={() => void loadWorkspace()} />}
             {activeSection === 'security' && <SecurityPanel currentPassword={currentPassword} newPassword={newPassword} message={passwordMessage} loading={loading} onCurrent={setCurrentPassword} onNew={setNewPassword} onSubmit={changePassword} />}
           </section>
@@ -241,7 +257,7 @@ function AdminPage() {
   )
 }
 
-function Overview({ counts, profiles, loading, onModerate, onActivity }: { counts: Record<ProfileStatus | 'featured', number>; profiles: ModerationProfile[]; loading: boolean; onModerate: () => void; onActivity: () => void }) {
+function Overview({ counts, metrics: adminMetrics, profiles, loading, onModerate, onActivity }: { counts: Record<ProfileStatus | 'featured', number>; metrics: AdminMetrics | null; profiles: ModerationProfile[]; loading: boolean; onModerate: () => void; onActivity: () => void }) {
   const metrics = [
     { label: 'Aguardando análise', value: counts.pending, hint: counts.pending ? 'Ação necessária' : 'Fila em dia', icon: FileClock, color: 'text-amber-600 bg-amber-50' },
     { label: 'Perfis publicados', value: counts.active, hint: `${counts.featured} em destaque`, icon: UserRoundCheck, color: 'text-emerald-600 bg-emerald-50' },
@@ -256,6 +272,7 @@ function Overview({ counts, profiles, loading, onModerate, onActivity }: { count
       </div>
     </div>
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{metrics.map(metric => { const Icon = metric.icon; return <article key={metric.label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-start justify-between"><div><p className="text-xs font-bold uppercase tracking-[.12em] text-slate-500">{metric.label}</p><p className="mt-3 text-3xl font-extrabold tracking-tight">{loading ? '—' : metric.value}</p></div><span className={`rounded-xl p-2.5 ${metric.color}`}><Icon className="h-5 w-5" /></span></div><p className="mt-3 text-xs font-medium text-slate-500">{metric.hint}</p></article> })}</div>
+    <div className="grid gap-3 md:grid-cols-3"><article className="rounded-2xl bg-fuchsia-950 p-5 text-white"><p className="text-xs font-bold uppercase tracking-[.12em] text-pink-200">Novos hoje</p><p className="mt-2 text-3xl font-black">{adminMetrics?.submitted_today ?? '—'}</p><p className="mt-1 text-xs text-pink-200">Envios nas últimas 24h</p></article><article className="rounded-2xl bg-slate-900 p-5 text-white"><p className="text-xs font-bold uppercase tracking-[.12em] text-slate-300">Últimos 7 dias</p><p className="mt-2 text-3xl font-black">{adminMetrics?.submitted_last_7_days ?? '—'}</p><p className="mt-1 text-xs text-slate-300">Cadastros recebidos</p></article><article className="rounded-2xl border border-amber-200 bg-amber-50 p-5"><p className="text-xs font-bold uppercase tracking-[.12em] text-amber-800">Autoaprovação</p><p className="mt-2 text-3xl font-black text-amber-950">{adminMetrics?.auto_approved ?? '—'}</p><p className="mt-1 text-xs text-amber-800">Perfis com fluxo automático</p></article></div>
     <div className="grid gap-6 xl:grid-cols-[1.45fr_.85fr]">
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><div className="flex items-center justify-between"><div><p className="text-sm font-extrabold">Entradas recentes</p><p className="mt-1 text-xs text-slate-500">Últimos perfis registrados na plataforma.</p></div><button type="button" onClick={onModerate} className="inline-flex items-center gap-1 text-xs font-bold text-fuchsia-700 hover:text-fuchsia-900">Abrir fila <ArrowUpRight className="h-3.5 w-3.5" /></button></div>{profiles.length === 0 ? <EmptyState icon={FileClock} title="Ainda não há perfis" text="Os novos cadastros aparecerão aqui assim que forem enviados." compact /> : <div className="mt-5 divide-y divide-slate-100">{profiles.map(profile => <RecentProfile key={profile.id} profile={profile} />)}</div>}</section>
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><div className="flex items-center gap-2"><span className="rounded-lg bg-violet-50 p-2 text-violet-700"><Activity className="h-4 w-4" /></span><div><p className="text-sm font-extrabold">Disciplina operacional</p><p className="text-xs text-slate-500">Próximas prioridades</p></div></div><ol className="mt-5 space-y-4">{[['1','Revise a fila pendente','Cheque foto, idade, texto e dados de contato.'],['2','Registre decisões','Use a nota para orientar ajustes em recusas.'],['3','Destaque com critério','Use destaque apenas em perfis consistentes.']].map(([number,title,text]) => <li key={number} className="flex gap-3"><span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-extrabold text-slate-600">{number}</span><div><p className="text-sm font-bold">{title}</p><p className="mt-1 text-xs leading-5 text-slate-500">{text}</p></div></li>)}</ol><button type="button" onClick={onActivity} className="mt-6 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-bold text-slate-700 transition hover:bg-slate-50">Ver trilha de auditoria</button></section>
@@ -263,7 +280,7 @@ function Overview({ counts, profiles, loading, onModerate, onActivity }: { count
   </div>
 }
 
-function ModerationQueue({ status, query, profiles, total, savingId, loading, onStatus, onQuery, onUpdate }: { status: ProfileStatus; query: string; profiles: ModerationProfile[]; total: number; savingId: string | null; loading: boolean; onStatus: (status: ProfileStatus) => void; onQuery: (value: string) => void; onUpdate: (profile: ModerationProfile, status: ProfileStatus, featured?: boolean, moderationNote?: string) => Promise<void> }) {
+function ModerationQueue({ status, query, profiles, total, savingId, loading, onStatus, onQuery, onUpdate }: { status: ProfileStatus; query: string; profiles: ModerationProfile[]; total: number; savingId: string | null; loading: boolean; onStatus: (status: ProfileStatus) => void; onQuery: (value: string) => void; onUpdate: (profile: ModerationProfile, status: ProfileStatus, featured?: boolean, moderationNote?: string, autoApproved?: boolean) => Promise<void> }) {
   const selected = STATUS_OPTIONS.find(option => option.value === status)!
   return <div className="space-y-5">
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -279,16 +296,29 @@ function ModerationQueue({ status, query, profiles, total, savingId, loading, on
 
 function RecentProfile({ profile }: { profile: ModerationProfile }) { const option = STATUS_OPTIONS.find(item => item.value === profile.status)!; return <div className="flex items-center gap-3 py-3 first:pt-0 last:pb-0"><div className="h-10 w-10 overflow-hidden rounded-xl bg-slate-100">{profile.photos[0] ? <img src={profile.photos[0]} alt="" className="h-full w-full object-cover" /> : <span className="flex h-full items-center justify-center text-slate-400"><ImageIcon className="h-4 w-4" /></span>}</div><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold">{profile.name}</p><p className="truncate text-xs text-slate-500">{profile.city} · {profile.category}</p></div><span className={`hidden rounded-full px-2 py-1 text-[10px] font-bold ring-1 sm:inline ${option.tone}`}>{option.label}</span></div> }
 
-function ProfileCard({ profile, saving, onUpdate }: { profile: ModerationProfile; saving: boolean; onUpdate: (profile: ModerationProfile, status: ProfileStatus, featured?: boolean, moderationNote?: string) => Promise<void> }) {
+function ProfileCard({ profile, saving, onUpdate }: { profile: ModerationProfile; saving: boolean; onUpdate: (profile: ModerationProfile, status: ProfileStatus, featured?: boolean, moderationNote?: string, autoApproved?: boolean) => Promise<void> }) {
   const date = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(profile.created_at.replace(' ', 'T') + 'Z'))
   const [moderationNote, setModerationNote] = useState(profile.moderation_note ?? '')
   const option = STATUS_OPTIONS.find(item => item.value === profile.status)!
   return <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><div className="grid md:grid-cols-[210px_minmax(0,1fr)]"><div className="relative min-h-52 bg-slate-100">{profile.photos[0] ? <img src={profile.photos[0]} alt={`Foto enviada por ${profile.name}`} className="absolute inset-0 h-full w-full object-cover" /> : <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-400"><ImageIcon className="h-7 w-7"/><span className="text-xs font-semibold">Sem foto enviada</span></div>}<span className={`absolute left-3 top-3 rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 backdrop-blur ${option.tone}`}>{option.label}</span></div><div className="p-5 sm:p-6"><div className="flex flex-col gap-4 sm:flex-row sm:justify-between"><div><div className="flex flex-wrap items-center gap-2"><h2 className="text-lg font-extrabold tracking-tight">{profile.name}, {profile.age}</h2>{profile.is_featured && <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-800"><Star className="h-3 w-3 fill-current"/> Destaque</span>}</div><div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs font-medium text-slate-500"><span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5 text-fuchsia-600"/>{profile.city}{profile.neighborhood ? ` · ${profile.neighborhood}` : ''}</span><span>{profile.category}</span><span>{profile.price}</span><span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5"/> {profile.availability || 'Disponibilidade não informada'}</span></div></div><p className="shrink-0 text-xs text-slate-400">Enviado em {date}</p></div>
-  {profile.description && <p className="mt-4 max-w-4xl text-sm leading-6 text-slate-600">{profile.description}</p>}
+  {profile.member_email && <p className="mt-3 text-xs font-bold text-slate-500">Conta proprietária: {profile.member_email}</p>}{profile.description && <p className="mt-4 max-w-4xl text-sm leading-6 text-slate-600">{profile.description}</p>}
   <div className="mt-4 flex flex-wrap gap-2">{profile.services.slice(0, 4).map(item => <span key={item} className="rounded-lg bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">{item}</span>)}{profile.tags.slice(0, 4).map(tag => <span key={tag} className="rounded-lg border border-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-500">#{tag}</span>)}</div>
   <div className="mt-4 grid gap-3 rounded-xl bg-slate-50 p-3 text-xs text-slate-600 sm:grid-cols-2"><span className="inline-flex items-center gap-2"><Phone className="h-3.5 w-3.5 text-slate-400"/>{profile.contact_phone || 'Sem telefone'}</span><span className="inline-flex items-center gap-2"><ImageIcon className="h-3.5 w-3.5 text-slate-400"/>{profile.photos.length} foto{profile.photos.length === 1 ? '' : 's'} enviada{profile.photos.length === 1 ? '' : 's'}</span></div>
   <label className="mt-4 block text-xs font-bold text-slate-700">Nota interna / retorno para o perfil<textarea value={moderationNote} onChange={event => setModerationNote(event.target.value)} rows={2} placeholder="Ex.: Reenvie a foto principal com melhor resolução." className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-normal text-slate-700 outline-none transition focus:border-fuchsia-400 focus:ring-4 focus:ring-fuchsia-100"/></label>
-  <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4">{profile.status !== 'active' && <ActionButton disabled={saving} onClick={() => onUpdate(profile, 'active', profile.is_featured, moderationNote)} tone="positive"><Check className="h-4 w-4"/> Publicar perfil</ActionButton>}{profile.status !== 'rejected' && <ActionButton disabled={saving} onClick={() => onUpdate(profile, 'rejected', false, moderationNote)} tone="danger"><X className="h-4 w-4"/> Recusar</ActionButton>}{profile.status === 'active' && <ActionButton disabled={saving} onClick={() => onUpdate(profile, 'active', !profile.is_featured, moderationNote)} tone={profile.is_featured ? 'neutral' : 'highlight'}><Star className={`h-4 w-4 ${profile.is_featured ? 'fill-current' : ''}`}/>{profile.is_featured ? 'Remover destaque' : 'Dar destaque'}</ActionButton>}{profile.status !== 'archived' && <ActionButton disabled={saving} onClick={() => onUpdate(profile, 'archived', false, moderationNote)} tone="neutral">Arquivar</ActionButton>}{saving && <span className="inline-flex items-center gap-2 px-2 py-2 text-sm font-semibold text-slate-500"><Loader2 className="h-4 w-4 animate-spin"/> Salvando</span>}</div></div></div></article>
+  <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4">{profile.status !== 'active' && <ActionButton disabled={saving} onClick={() => onUpdate(profile, 'active', profile.is_featured, moderationNote)} tone="positive"><Check className="h-4 w-4"/> Publicar perfil</ActionButton>}{profile.status !== 'rejected' && <ActionButton disabled={saving} onClick={() => onUpdate(profile, 'rejected', false, moderationNote)} tone="danger"><X className="h-4 w-4"/> Recusar</ActionButton>}{profile.status === 'active' && <ActionButton disabled={saving} onClick={() => onUpdate(profile, 'active', !profile.is_featured, moderationNote)} tone={profile.is_featured ? 'neutral' : 'highlight'}><Star className={`h-4 w-4 ${profile.is_featured ? 'fill-current' : ''}`}/>{profile.is_featured ? 'Remover destaque' : 'Dar destaque'}</ActionButton>}<ActionButton disabled={saving} onClick={() => onUpdate(profile, profile.status, profile.is_featured, moderationNote, !profile.auto_approved)} tone={profile.auto_approved ? 'highlight' : 'neutral'}><Sparkles className="h-4 w-4"/>{profile.auto_approved ? 'Autoaprovação ativa' : 'Ativar autoaprovação'}</ActionButton>{profile.status !== 'archived' && <ActionButton disabled={saving} onClick={() => onUpdate(profile, 'archived', false, moderationNote)} tone="neutral">Arquivar</ActionButton>}{saving && <span className="inline-flex items-center gap-2 px-2 py-2 text-sm font-semibold text-slate-500"><Loader2 className="h-4 w-4 animate-spin"/> Salvando</span>}</div></div></div></article>
+}
+
+function MembersPanel({ members, query, loading, onQuery, onReload, onSave }: { members: AdminMember[]; query: string; loading: boolean; onQuery: (value: string) => void; onReload: (query: string) => Promise<void>; onSave: (member: AdminMember, values: { displayName: string; marketingOptIn: boolean }) => Promise<void> }) {
+  return <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between"><div><p className="text-base font-extrabold">Contas cadastradas</p><p className="mt-1 text-sm text-slate-500">Acompanhe proprietários, quantidade de perfis e preferências de comunicação.</p></div><div className="flex gap-2"><input value={query} onChange={event => onQuery(event.target.value)} placeholder="E-mail ou nome" className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-fuchsia-400 sm:w-56"/><button type="button" onClick={() => void onReload(query)} className="rounded-xl bg-slate-950 px-3 py-2 text-xs font-bold text-white">Buscar</button></div></div><div className="mt-6 grid gap-3">{members.length === 0 ? <EmptyState icon={Users} title="Nenhuma conta encontrada" text="Tente outro nome ou e-mail."/> : members.map(member => <MemberRow key={member.id} member={member} loading={loading} onSave={onSave}/>)}</div></section>
+}
+
+function MemberRow({ member, loading, onSave }: { member: AdminMember; loading: boolean; onSave: (member: AdminMember, values: { displayName: string; marketingOptIn: boolean }) => Promise<void> }) {
+  const [name, setName] = useState(member.display_name)
+  const [marketing, setMarketing] = useState(member.marketing_opt_in)
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const save = async () => { setSaving(true); try { await onSave(member, { displayName: name, marketingOptIn: marketing }); setEditing(false) } finally { setSaving(false) } }
+  return <article className="rounded-xl border border-slate-200 p-4"><div className="flex flex-col gap-3 lg:flex-row lg:items-center"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-fuchsia-100 text-sm font-black text-fuchsia-700">{(member.display_name || member.email).slice(0, 1).toUpperCase()}</div><div className="min-w-0 flex-1">{editing ? <input value={name} onChange={event => setName(event.target.value)} className="w-full max-w-xs rounded-lg border border-slate-200 px-2 py-1 text-sm font-bold"/> : <p className="text-sm font-extrabold">{member.display_name || 'Sem nome de exibição'}</p>}<p className="truncate text-xs text-slate-500">{member.email}</p></div><div className="grid grid-cols-2 gap-2 text-center text-xs sm:flex sm:text-left"><span className="rounded-lg bg-slate-100 px-3 py-2"><strong className="block text-sm">{member.profile_count}</strong>perfis</span><span className="rounded-lg bg-emerald-50 px-3 py-2 text-emerald-800"><strong className="block text-sm">{member.active_profile_count}</strong>ativos</span></div><div className="flex items-center gap-2">{editing && <label className="flex items-center gap-1 text-xs font-semibold text-slate-600"><input type="checkbox" checked={marketing} onChange={event => setMarketing(event.target.checked)} className="accent-fuchsia-600"/> Marketing</label>}<button type="button" disabled={saving || loading} onClick={() => editing ? void save() : setEditing(true)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">{saving ? 'Salvando...' : editing ? 'Salvar' : 'Editar conta'}</button></div></div></article>
 }
 
 function ActivityPanel({ logs, loading, onRefresh }: { logs: AuditLog[]; loading: boolean; onRefresh: () => void }) { return <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><p className="text-base font-extrabold">Trilha de auditoria</p><p className="mt-1 max-w-xl text-sm leading-6 text-slate-500">Decisões administrativas e alterações de segurança registradas pelo sistema.</p></div><button type="button" onClick={onRefresh} disabled={loading} className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`}/>Atualizar</button></div>{logs.length === 0 ? <EmptyState icon={Activity} title="Sem eventos registrados" text="As decisões feitas no painel aparecerão nesta trilha." /> : <ol className="mt-7 space-y-0">{logs.map((log, index) => <li key={`${log.created_at}-${index}`} className="relative flex gap-4 pb-6 last:pb-0"><span className="relative z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-fuchsia-50 text-fuchsia-700"><Activity className="h-4 w-4"/></span>{index < logs.length - 1 && <span className="absolute left-[17px] top-9 h-[calc(100%-20px)] w-px bg-slate-200"/>}<div className="pt-1"><p className="text-sm font-bold text-slate-800">{formatAuditLog(log)}</p><p className="mt-1 text-xs text-slate-400">{formatDate(log.created_at)}</p></div></li>)}</ol>}</section> }

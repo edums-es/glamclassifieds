@@ -269,6 +269,7 @@ function api_migrate_profiles(PDO $pdo): void
         'service_for' => 'ADD COLUMN service_for JSON NULL AFTER services',
         'meeting_places' => 'ADD COLUMN meeting_places JSON NULL AFTER service_for',
         'payment_methods' => 'ADD COLUMN payment_methods JSON NULL AFTER meeting_places',
+        'auto_approved' => 'ADD COLUMN auto_approved TINYINT(1) NOT NULL DEFAULT 0 AFTER is_featured',
     ];
 
     foreach ($changes as $column => $statement) {
@@ -314,6 +315,9 @@ function api_admin_profile_output(array $profile, array $photos): array
         'moderation_note' => $profile['moderation_note'] ?? '',
         'created_at' => $profile['created_at'],
         'updated_at' => $profile['updated_at'],
+        'member_id' => isset($profile['member_id']) ? (int) $profile['member_id'] : null,
+        'member_email' => $profile['member_email'] ?? '',
+        'auto_approved' => !empty($profile['auto_approved']),
     ]);
 }
 
@@ -471,7 +475,7 @@ try {
         if ($name === '' || mb_strlen($name) > 80 || !$age || !in_array($category, $allowedCategories, true) || $city === '' || mb_strlen($city) > 120 || mb_strlen($neighborhood) > 120 || $price === '' || mb_strlen($price) > 80 || mb_strlen($contactPhone) < 8 || mb_strlen($contactPhone) > 40 || mb_strlen($availability) > 160 || mb_strlen($description) > 2000 || $invalidList) {
             Response::error('Verifique os dados do perfil antes de salvar.', 422);
         }
-        $statement = $pdo->prepare('UPDATE profiles SET display_name = :name, age = :age, category = :category, city = :city, neighborhood = :neighborhood, price_label = :price, contact_phone = :contact_phone, availability = :availability, services = :services, service_for = :service_for, meeting_places = :meeting_places, payment_methods = :payment_methods, description = :description, tags = :tags, status = "pending", is_featured = 0, moderation_note = NULL WHERE id = :id AND member_id = :member_id');
+        $statement = $pdo->prepare('UPDATE profiles SET display_name = :name, age = :age, category = :category, city = :city, neighborhood = :neighborhood, price_label = :price, contact_phone = :contact_phone, availability = :availability, services = :services, service_for = :service_for, meeting_places = :meeting_places, payment_methods = :payment_methods, description = :description, tags = :tags, status = CASE WHEN auto_approved = 1 THEN "active" ELSE "pending" END, is_featured = 0, moderation_note = NULL WHERE id = :id AND member_id = :member_id');
         $statement->execute(['name' => $name, 'age' => $age, 'category' => $category, 'city' => $city, 'neighborhood' => $neighborhood ?: null, 'price' => $price, 'contact_phone' => $contactPhone, 'availability' => $availability ?: null, 'services' => json_encode(array_values($services), JSON_UNESCAPED_UNICODE), 'service_for' => json_encode(array_values($serviceFor), JSON_UNESCAPED_UNICODE), 'meeting_places' => json_encode(array_values($meetingPlaces), JSON_UNESCAPED_UNICODE), 'payment_methods' => json_encode(array_values($paymentMethods), JSON_UNESCAPED_UNICODE), 'description' => $description, 'tags' => json_encode(array_values($tags), JSON_UNESCAPED_UNICODE), 'id' => $matches[1], 'member_id' => $member['id']]);
         if ($statement->rowCount() === 0) {
             $exists = $pdo->prepare('SELECT id FROM profiles WHERE id = :id AND member_id = :member_id LIMIT 1');
@@ -495,7 +499,7 @@ try {
         if (!in_array($status, ['pending', 'archived'], true)) {
             Response::error('Ação de perfil inválida.', 422);
         }
-        $statement = $pdo->prepare('UPDATE profiles SET status = :status, is_featured = 0 WHERE id = :id AND member_id = :member_id');
+        $statement = $pdo->prepare('UPDATE profiles SET status = CASE WHEN :status = "pending" AND auto_approved = 1 THEN "active" ELSE :status END, is_featured = 0 WHERE id = :id AND member_id = :member_id');
         $statement->execute(['status' => $status, 'id' => $matches[1], 'member_id' => $member['id']]);
         if ($statement->rowCount() === 0) {
             $exists = $pdo->prepare('SELECT id FROM profiles WHERE id = :id AND member_id = :member_id LIMIT 1');
@@ -620,16 +624,59 @@ try {
         Response::json(['data' => $data]);
     }
 
+    if ($method === 'GET' && $path === '/v1/admin/metrics') {
+        api_require_admin($pdo);
+        $statusCounts = ['pending' => 0, 'active' => 0, 'rejected' => 0, 'archived' => 0];
+        foreach ($pdo->query('SELECT status, COUNT(*) AS total FROM profiles GROUP BY status')->fetchAll() as $row) {
+            $statusCounts[$row['status']] = (int) $row['total'];
+        }
+        $memberCount = (int) $pdo->query('SELECT COUNT(*) FROM members')->fetchColumn();
+        $autoApproved = (int) $pdo->query('SELECT COUNT(*) FROM profiles WHERE auto_approved = 1')->fetchColumn();
+        $todayProfiles = (int) $pdo->query('SELECT COUNT(*) FROM profiles WHERE created_at >= CURDATE()')->fetchColumn();
+        $weekProfiles = (int) $pdo->query('SELECT COUNT(*) FROM profiles WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)')->fetchColumn();
+        Response::json(['data' => ['profiles' => $statusCounts, 'members' => $memberCount, 'auto_approved' => $autoApproved, 'submitted_today' => $todayProfiles, 'submitted_last_7_days' => $weekProfiles, 'generated_at' => gmdate('c')]]);
+    }
+
+    if ($method === 'GET' && $path === '/v1/admin/members') {
+        api_require_admin($pdo);
+        $query = trim((string) ($_GET['q'] ?? ''));
+        $sql = 'SELECT members.id, members.email, members.display_name, members.marketing_opt_in, members.created_at, members.updated_at, COUNT(profiles.id) AS profile_count, SUM(profiles.status = "active") AS active_profile_count, MAX(profiles.updated_at) AS last_profile_at FROM members LEFT JOIN profiles ON profiles.member_id = members.id';
+        $params = [];
+        if ($query !== '') { $sql .= ' WHERE members.email LIKE :query OR members.display_name LIKE :query'; $params['query'] = '%' . $query . '%'; }
+        $sql .= ' GROUP BY members.id ORDER BY members.created_at DESC LIMIT 100';
+        $statement = $pdo->prepare($sql); $statement->execute($params);
+        $data = array_map(static fn(array $member): array => ['id' => (int) $member['id'], 'email' => $member['email'], 'display_name' => $member['display_name'] ?? '', 'marketing_opt_in' => (bool) $member['marketing_opt_in'], 'created_at' => $member['created_at'], 'updated_at' => $member['updated_at'], 'profile_count' => (int) $member['profile_count'], 'active_profile_count' => (int) $member['active_profile_count'], 'last_profile_at' => $member['last_profile_at']], $statement->fetchAll());
+        Response::json(['data' => $data]);
+    }
+
+    if ($method === 'PATCH' && preg_match('#^/v1/admin/members/(\d+)$#', $path, $matches)) {
+        api_validate_same_origin(); $admin = api_require_admin($pdo); $body = api_json_body();
+        $displayName = trim((string) ($body['display_name'] ?? ''));
+        if (mb_strlen($displayName) > 80) Response::error('Nome de exibição muito longo.', 422);
+        $marketingOptIn = !empty($body['marketing_opt_in']) ? 1 : 0;
+        $statement = $pdo->prepare('UPDATE members SET display_name = :display_name, marketing_opt_in = :marketing_opt_in WHERE id = :id');
+        $statement->execute(['display_name' => $displayName ?: null, 'marketing_opt_in' => $marketingOptIn, 'id' => (int) $matches[1]]);
+        if ($statement->rowCount() === 0) { $exists = $pdo->prepare('SELECT id FROM members WHERE id = :id'); $exists->execute(['id' => (int) $matches[1]]); if (!$exists->fetch()) Response::error('Usuário não encontrado.', 404); }
+        api_audit($pdo, (int) $admin['id'], 'member_updated', null, ['member_id' => (int) $matches[1]]);
+        Response::json(['data' => ['updated' => true]]);
+    }
+
     if ($method === 'GET' && $path === '/v1/admin/profiles') {
         api_require_admin($pdo);
         $status = (string) ($_GET['status'] ?? 'pending');
+        $query = trim((string) ($_GET['q'] ?? ''));
         $allowedStatuses = ['pending', 'active', 'rejected', 'archived'];
-        if (!in_array($status, $allowedStatuses, true)) {
+        if ($status !== 'all' && !in_array($status, $allowedStatuses, true)) {
             Response::error('Filtro de status inválido.', 422);
         }
-
-        $statement = $pdo->prepare('SELECT * FROM profiles WHERE status = :status ORDER BY created_at DESC LIMIT 100');
-        $statement->execute(['status' => $status]);
+        $sql = 'SELECT profiles.*, members.email AS member_email FROM profiles LEFT JOIN members ON members.id = profiles.member_id';
+        $params = [];
+        $where = [];
+        if ($status !== 'all') { $where[] = 'profiles.status = :status'; $params['status'] = $status; }
+        if ($query !== '') { $where[] = '(profiles.display_name LIKE :query OR profiles.city LIKE :query OR profiles.contact_phone LIKE :query OR members.email LIKE :query)'; $params['query'] = '%' . $query . '%'; }
+        if ($where !== []) $sql .= ' WHERE ' . implode(' AND ', $where);
+        $sql .= ' ORDER BY profiles.created_at DESC LIMIT 100';
+        $statement = $pdo->prepare($sql); $statement->execute($params);
         $profiles = $statement->fetchAll();
         $photoStatement = $pdo->prepare('SELECT path FROM profile_photos WHERE profile_id = :profile_id ORDER BY position ASC');
         $data = [];
@@ -654,9 +701,19 @@ try {
             Response::error('A observação de moderação é muito longa.', 422);
         }
         $isFeatured = !empty($body['is_featured']) && $status === 'active' ? 1 : 0;
+        $autoApproved = !empty($body['auto_approved']) ? 1 : 0;
+        $profileEdit = is_array($body['profile'] ?? null) ? $body['profile'] : [];
+        $editName = array_key_exists('name', $profileEdit) ? trim((string) $profileEdit['name']) : null;
+        $editCity = array_key_exists('city', $profileEdit) ? trim((string) $profileEdit['city']) : null;
+        $editNeighborhood = array_key_exists('neighborhood', $profileEdit) ? trim((string) $profileEdit['neighborhood']) : null;
+        $editPrice = array_key_exists('price', $profileEdit) ? trim((string) $profileEdit['price']) : null;
+        $editPhone = array_key_exists('contact_phone', $profileEdit) ? trim((string) $profileEdit['contact_phone']) : null;
+        $editAvailability = array_key_exists('availability', $profileEdit) ? trim((string) $profileEdit['availability']) : null;
+        $editDescription = array_key_exists('description', $profileEdit) ? trim((string) $profileEdit['description']) : null;
+        if (($editName !== null && ($editName === '' || mb_strlen($editName) > 80)) || ($editCity !== null && ($editCity === '' || mb_strlen($editCity) > 120)) || ($editPrice !== null && ($editPrice === '' || mb_strlen($editPrice) > 80)) || ($editPhone !== null && (mb_strlen($editPhone) < 8 || mb_strlen($editPhone) > 40)) || ($editNeighborhood !== null && mb_strlen($editNeighborhood) > 120) || ($editAvailability !== null && mb_strlen($editAvailability) > 160) || ($editDescription !== null && mb_strlen($editDescription) > 2000)) Response::error('Verifique os dados editados do perfil.', 422);
 
-        $statement = $pdo->prepare('UPDATE profiles SET status = :status, is_featured = :is_featured, moderation_note = :moderation_note WHERE id = :id');
-        $statement->execute(['status' => $status, 'is_featured' => $isFeatured, 'moderation_note' => $moderationNote ?: null, 'id' => $matches[1]]);
+        $statement = $pdo->prepare('UPDATE profiles SET status = :status, is_featured = :is_featured, auto_approved = :auto_approved, moderation_note = :moderation_note, display_name = COALESCE(:name, display_name), city = COALESCE(:city, city), neighborhood = COALESCE(:neighborhood, neighborhood), price_label = COALESCE(:price, price_label), contact_phone = COALESCE(:phone, contact_phone), availability = COALESCE(:availability, availability), description = COALESCE(:description, description) WHERE id = :id');
+        $statement->execute(['status' => $status, 'is_featured' => $isFeatured, 'auto_approved' => $autoApproved, 'moderation_note' => $moderationNote ?: null, 'name' => $editName, 'city' => $editCity, 'neighborhood' => $editNeighborhood, 'price' => $editPrice, 'phone' => $editPhone, 'availability' => $editAvailability, 'description' => $editDescription, 'id' => $matches[1]]);
         if ($statement->rowCount() === 0) {
             $exists = $pdo->prepare('SELECT id FROM profiles WHERE id = :id LIMIT 1');
             $exists->execute(['id' => $matches[1]]);
@@ -668,6 +725,8 @@ try {
         api_audit($pdo, (int) $admin['id'], 'profile_moderated', $matches[1], [
             'status' => $status,
             'is_featured' => (bool) $isFeatured,
+            'auto_approved' => (bool) $autoApproved,
+            'edited' => $profileEdit !== [],
             'has_moderation_note' => $moderationNote !== '',
         ]);
 

@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     tags JSON NOT NULL,
     status ENUM('pending', 'active', 'rejected', 'archived') NOT NULL DEFAULT 'pending',
     is_featured TINYINT(1) NOT NULL DEFAULT 0,
+    auto_approved TINYINT(1) NOT NULL DEFAULT 0,
     submitted_ip_hash CHAR(64) NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,

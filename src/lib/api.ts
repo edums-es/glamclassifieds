@@ -44,7 +44,13 @@ export type ModerationProfile = Profile & {
   moderation_note: string
   created_at: string
   updated_at: string
+  member_id: number | null
+  member_email: string
+  auto_approved: boolean
 }
+
+export type AdminMetrics = { profiles: Record<ProfileStatus, number>; members: number; auto_approved: number; submitted_today: number; submitted_last_7_days: number; generated_at: string }
+export type AdminMember = { id: number; email: string; display_name: string; marketing_opt_in: boolean; created_at: string; updated_at: string; profile_count: number; active_profile_count: number; last_profile_at: string | null }
 
 export type AuditLog = {
   action: string
@@ -149,6 +155,9 @@ export const adminApi = {
     const payload = await request<ApiEnvelope<ModerationProfile[]>>(`/admin/profiles?status=${status}`)
     return payload.data
   },
+  async metrics(): Promise<AdminMetrics> { const payload = await request<ApiEnvelope<AdminMetrics>>('/admin/metrics'); return payload.data },
+  async members(query = ''): Promise<AdminMember[]> { const payload = await request<ApiEnvelope<AdminMember[]>>(`/admin/members${query ? `?q=${encodeURIComponent(query)}` : ''}`); return payload.data },
+  async updateMember(id: number, values: { displayName: string; marketingOptIn: boolean }): Promise<void> { await request(`/admin/members/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ display_name: values.displayName, marketing_opt_in: values.marketingOptIn }) }) },
 
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {
     await request('/admin/password', {
@@ -163,11 +172,11 @@ export const adminApi = {
     return payload.data
   },
 
-  async updateProfile(id: string, changes: { status: ProfileStatus; is_featured: boolean; moderationNote?: string }): Promise<ModerationProfile> {
+  async updateProfile(id: string, changes: { status: ProfileStatus; is_featured: boolean; autoApproved?: boolean; moderationNote?: string; profile?: Partial<Pick<Profile, 'name' | 'city' | 'neighborhood' | 'price' | 'contact_phone' | 'availability' | 'description'>> }): Promise<ModerationProfile> {
     const payload = await request<ApiEnvelope<ModerationProfile>>(`/admin/profiles/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: changes.status, is_featured: changes.is_featured, moderation_note: changes.moderationNote ?? '' }),
+      body: JSON.stringify({ status: changes.status, is_featured: changes.is_featured, auto_approved: changes.autoApproved ?? false, moderation_note: changes.moderationNote ?? '', profile: changes.profile }),
     })
     return payload.data
   },
