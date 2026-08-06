@@ -17,9 +17,6 @@ RewriteRule ^install(?:/|$) - [END]
 # Vite emits absolute /assets URLs. The production build lives in /dist.
 RewriteRule ^assets/(.+)$ dist/assets/$1 [END]
 
-# Interactive API documentation and its OpenAPI contract are static files in dist.
-RewriteRule ^api-docs/(.+)$ dist/api-docs/$1 [END]
-
 # Do not send real files (including files that were internally rewritten above)
 # back through the SPA fallback.
 RewriteCond %{REQUEST_FILENAME} -f [OR]

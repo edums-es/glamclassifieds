@@ -27,7 +27,7 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { adminApi, type Admin, type AdminMember, type AdminMetrics, type AuditLog, type ModerationProfile, type ProfileStatus } from '@/lib/api'
+import { adminApi, tsoApi, type Admin, type AdminMember, type AdminMetrics, type AuditLog, type ModerationProfile, type ProfileStatus } from '@/lib/api'
 
 const STATUS_OPTIONS: { value: ProfileStatus; label: string; description: string; tone: string }[] = [
   { value: 'pending', label: 'Para revisar', description: 'Aguardando análise', tone: 'bg-amber-50 text-amber-800 ring-amber-200' },
@@ -55,7 +55,7 @@ function AdminPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [passwordVisible, setPasswordVisible] = useState(false)
-  const [activeSection, setActiveSection] = useState<'overview' | 'queue' | 'members' | 'activity' | 'security'>('overview')
+  const [activeSection, setActiveSection] = useState<'overview' | 'queue' | 'members' | 'activity' | 'security' | 'tso-dashboard' | 'tso-creators' | 'tso-posts' | 'tso-tracking' | 'tso-orders'>('overview')
   const [status, setStatus] = useState<ProfileStatus>('pending')
   const [profilesByStatus, setProfilesByStatus] = useState<Record<ProfileStatus, ModerationProfile[]>>(EMPTY_PROFILES)
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
@@ -198,6 +198,14 @@ function AdminPage() {
     { id: 'security', label: 'Segurança', icon: LockKeyhole },
   ]
 
+  const tsoNavItems: { id: typeof activeSection; label: string; icon: typeof LayoutDashboard }[] = [
+    { id: 'tso-dashboard', label: 'TSO Dashboard', icon: LayoutDashboard },
+    { id: 'tso-creators', label: 'Creators', icon: Users },
+    { id: 'tso-posts', label: 'Posts (PPV)', icon: ImageIcon },
+    { id: 'tso-tracking', label: 'Tracking', icon: MapPin },
+    { id: 'tso-orders', label: 'Vendas', icon: BadgeCheck },
+  ]
+
   return (
     <main className="min-h-dvh bg-[#f5f5f7] text-slate-900">
       <div className="min-h-dvh lg:grid lg:grid-cols-[252px_minmax(0,1fr)]">
@@ -221,6 +229,19 @@ function AdminPage() {
             })}
           </nav>
 
+          <div className="mt-8 mb-2 px-3">
+            <p className="text-xs font-bold uppercase tracking-[.18em] text-fuchsia-500">The Sex Only</p>
+          </div>
+          <nav className="flex gap-1 overflow-x-auto pb-1 lg:block lg:space-y-1 lg:overflow-visible">
+            {tsoNavItems.map(item => {
+              const Icon = item.icon
+              const active = activeSection === item.id
+              return <button key={item.id} type="button" onClick={() => setActiveSection(item.id)} className={`flex shrink-0 items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold transition lg:w-full ${active ? 'bg-fuchsia-600 text-white shadow-sm' : 'text-fuchsia-200 hover:bg-white/8 hover:text-white'}`}>
+                <Icon className="h-4.5 w-4.5" />{item.label}
+              </button>
+            })}
+          </nav>
+
           <div className="mt-7 hidden rounded-2xl border border-white/8 bg-white/[.035] p-4 lg:block">
             <p className="text-xs font-semibold text-slate-300">Moderação responsável</p>
             <p className="mt-2 text-xs leading-5 text-slate-500">Revise fotos, dados e descrição antes da publicação. Registre o motivo quando houver recusa.</p>
@@ -237,7 +258,7 @@ function AdminPage() {
             <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[.17em] text-fuchsia-700">Central de confiança</p>
-                <h1 className="mt-1 text-xl font-extrabold tracking-tight sm:text-2xl">{activeSection === 'overview' ? 'Visão geral' : activeSection === 'queue' ? 'Fila de moderação' : activeSection === 'members' ? 'Contas e proprietários' : activeSection === 'activity' ? 'Histórico operacional' : 'Segurança da conta'}</h1>
+                <h1 className="mt-1 text-xl font-extrabold tracking-tight sm:text-2xl">{activeSection === 'overview' ? 'Visão geral' : activeSection === 'queue' ? 'Fila de moderação' : activeSection === 'members' ? 'Contas e proprietários' : activeSection === 'activity' ? 'Histórico operacional' : activeSection.startsWith('tso-') ? 'The Sex Only' : 'Segurança da conta'}</h1>
               </div>
               <button type="button" onClick={() => void loadWorkspace()} disabled={loading} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-bold shadow-sm transition hover:border-slate-400 disabled:opacity-60"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /><span className="hidden sm:inline">Atualizar dados</span></button>
             </div>
@@ -250,6 +271,12 @@ function AdminPage() {
             {activeSection === 'members' && <MembersPanel members={members} query={memberQuery} loading={loading} onQuery={setMemberQuery} onReload={async (value) => { setLoading(true); try { setMembers(await adminApi.members(value)) } finally { setLoading(false) } }} onSave={async (member, values) => { await adminApi.updateMember(member.id, values); await loadWorkspace() }} />}
             {activeSection === 'activity' && <ActivityPanel logs={auditLogs} loading={loading} onRefresh={() => void loadWorkspace()} />}
             {activeSection === 'security' && <SecurityPanel currentPassword={currentPassword} newPassword={newPassword} message={passwordMessage} loading={loading} onCurrent={setCurrentPassword} onNew={setNewPassword} onSubmit={changePassword} />}
+            
+            {activeSection === 'tso-dashboard' && <TsoDashboard />}
+            {activeSection === 'tso-creators' && <TsoCreators />}
+            {activeSection === 'tso-posts' && <TsoPosts />}
+            {activeSection === 'tso-tracking' && <TsoTracking />}
+            {activeSection === 'tso-orders' && <TsoOrders />}
           </section>
         </div>
       </div>
@@ -333,3 +360,159 @@ function ErrorNotice({ message }: { message: string }) { return <div className="
 function formatDate(value: string) { return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value.replace(' ', 'T') + 'Z')) }
 function formatAuditLog(log: AuditLog) { if (log.action === 'profile_moderated') return `${log.admin_email} definiu um perfil como ${String(log.details.status ?? 'atualizado')}.`; if (log.action === 'password_changed') return `${log.admin_email} alterou a senha administrativa.`; return `${log.admin_email} executou ${log.action}.` }
 function LoadingScreen({ compact = false }: { compact?: boolean }) { return <div className={`flex items-center justify-center ${compact ? 'min-h-52' : 'min-h-dvh bg-[#f5f5f7]'}`}><Loader2 className="h-7 w-7 animate-spin text-fuchsia-700"/><span className="ml-3 text-sm font-medium text-slate-500">Carregando central administrativa…</span></div> }
+// --- The Sex Only Admin Components ---
+
+function TsoDashboard() {
+  const [data, setData] = useState({ creators: 0, posts: 0, sales: 0, revenue: 0 })
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    Promise.all([
+      tsoApi.getCreators(),
+      tsoApi.getPosts(),
+      tsoApi.getOrders()
+    ]).then(([creators, posts, orders]) => {
+      const revenue = orders.filter((o: any) => o.status === 'completed').reduce((acc: number, curr: any) => acc + curr.amountCents, 0) / 100
+      setData({
+        creators: creators.length,
+        posts: posts.length,
+        sales: orders.length,
+        revenue
+      })
+    }).finally(() => setLoading(false))
+  }, [])
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-3xl bg-gradient-to-br from-fuchsia-900 to-rose-900 p-8 text-white shadow-xl">
+        <h2 className="text-2xl font-extrabold tracking-tight">The Sex Only</h2>
+        <p className="mt-2 text-fuchsia-200">Painel de gerenciamento exclusivo da plataforma de conteúdo.</p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {[
+          {label: 'Creators Ativos', val: loading ? '...' : data.creators}, 
+          {label: 'Posts PPV', val: loading ? '...' : data.posts}, 
+          {label: 'Vendas (Total)', val: loading ? '...' : data.sales}, 
+          {label: 'Receita (Total)', val: loading ? '...' : `R$ ${data.revenue.toFixed(2).replace('.', ',')}`}
+        ].map(s => (
+          <div key={s.label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{s.label}</p>
+            <p className="mt-2 text-3xl font-black">{s.val}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function TsoCreators() {
+  const [creators, setCreators] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    tsoApi.getCreators().then(setCreators).finally(() => setLoading(false))
+  }, [])
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <h2 className="text-lg font-extrabold mb-4">Gerenciamento de Creators</h2>
+      {loading ? <LoadingScreen compact /> : creators.length === 0 ? <EmptyState icon={Users} title="Nenhum creator" text="Nenhum registro encontrado via API." /> : (
+        <div className="divide-y divide-slate-100">
+          {creators.map((c) => (
+            <div key={c.id} className="py-3 flex justify-between items-center">
+              <div>
+                <p className="font-bold">{c.username}</p>
+                <p className="text-xs text-slate-500">{c.bio || 'Sem bio'}</p>
+              </div>
+              <span className={`text-xs font-bold uppercase ${c.status === 'active' ? 'text-emerald-600' : 'text-amber-600'}`}>{c.status}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TsoPosts() {
+  const [posts, setPosts] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    tsoApi.getPosts().then(setPosts).finally(() => setLoading(false))
+  }, [])
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <h2 className="text-lg font-extrabold mb-4">Gerenciamento de Posts (PPV)</h2>
+      {loading ? <LoadingScreen compact /> : posts.length === 0 ? <EmptyState icon={ImageIcon} title="Nenhum post" text="Nenhum registro encontrado via API." /> : (
+        <div className="divide-y divide-slate-100">
+          {posts.map((p) => (
+            <div key={p.id} className="py-3 flex justify-between items-center">
+              <div>
+                <p className="font-bold">{p.title}</p>
+                <p className="text-xs text-slate-500">{p.visibility === 'paid' ? `Pago (R$ ${(p.priceCents / 100).toFixed(2)})` : 'Público'}</p>
+              </div>
+              <span className="text-xs text-slate-400">{p.status}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TsoTracking() {
+  const [links, setLinks] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    tsoApi.getTrackingLinks().then(setLinks).finally(() => setLoading(false))
+  }, [])
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <h2 className="text-lg font-extrabold mb-4">Monitoramento de Links (Tracking)</h2>
+      {loading ? <LoadingScreen compact /> : links.length === 0 ? <EmptyState icon={MapPin} title="Sem métricas" text="Nenhum registro encontrado via API." /> : (
+        <div className="divide-y divide-slate-100">
+          {links.map((l) => (
+            <div key={l.id} className="py-3 flex justify-between items-center">
+              <div>
+                <p className="font-bold">{l.name}</p>
+                <p className="text-xs text-fuchsia-600">thesex.online/l/{l.code}</p>
+              </div>
+              <span className="text-xs text-slate-400">Tipo: {l.destinationType}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TsoOrders() {
+  const [orders, setOrders] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    tsoApi.getOrders().then(setOrders).finally(() => setLoading(false))
+  }, [])
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <h2 className="text-lg font-extrabold mb-4">Vendas e Transações</h2>
+      {loading ? <LoadingScreen compact /> : orders.length === 0 ? <EmptyState icon={BadgeCheck} title="Nenhuma ordem" text="Nenhum registro encontrado via API." /> : (
+        <div className="divide-y divide-slate-100">
+          {orders.map((o) => (
+            <div key={o.id} className="py-3 flex justify-between items-center">
+              <div>
+                <p className="font-bold">Pedido: {o.id.slice(0, 8)}</p>
+                <p className="text-xs text-slate-500">Valor: R$ {(o.amountCents / 100).toFixed(2)}</p>
+              </div>
+              <span className={`text-xs font-bold uppercase ${o.status === 'completed' ? 'text-emerald-600' : 'text-slate-400'}`}>{o.status}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}

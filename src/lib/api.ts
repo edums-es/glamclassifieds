@@ -99,36 +99,31 @@ export const profilesApi = {
     city: string
     neighborhood: string
     price: string
-    contactPhone: string
+    contact_phone: string
     availability: string
     services: string[]
-    serviceFor: string[]
-    meetingPlaces: string[]
-    paymentMethods: string[]
+    service_for: string[]
+    meeting_places: string[]
+    payment_methods: string[]
     description: string
     tags: string[]
-    photos: File[]
-    adultConfirmed: boolean
-  }): Promise<void> {
-    const body = new FormData()
-    body.set('name', values.name)
-    body.set('age', values.age)
-    body.set('category', values.category)
-    body.set('city', values.city)
-    body.set('neighborhood', values.neighborhood)
-    body.set('price', values.price)
-    body.set('contact_phone', values.contactPhone)
-    body.set('availability', values.availability)
-    body.set('services', JSON.stringify(values.services))
-    body.set('service_for', JSON.stringify(values.serviceFor))
-    body.set('meeting_places', JSON.stringify(values.meetingPlaces))
-    body.set('payment_methods', JSON.stringify(values.paymentMethods))
-    body.set('description', values.description)
-    body.set('tags', JSON.stringify(values.tags))
-    body.set('adult_confirmed', String(values.adultConfirmed))
-    values.photos.forEach(photo => body.append('photos[]', photo))
+  }): Promise<{ id: string }> {
+    const payload = await request<ApiEnvelope<{ id: string }>>('/profiles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(values),
+    })
+    return payload.data
+  },
 
-    await request('/profiles', { method: 'POST', body })
+  async uploadPhoto(profileId: string, file: File): Promise<{ url: string }> {
+    const formData = new FormData()
+    formData.append('photo', file)
+    const payload = await request<ApiEnvelope<{ url: string }>>(`/profiles/${encodeURIComponent(profileId)}/photos`, {
+      method: 'POST',
+      body: formData,
+    })
+    return payload.data
   },
 }
 
@@ -205,4 +200,55 @@ export const memberApi = {
   },
   async updateSettings(values: { displayName: string; marketingOptIn: boolean }): Promise<Member> { const payload = await request<ApiEnvelope<Member>>('/member/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ display_name: values.displayName, marketing_opt_in: values.marketingOptIn }) }); return payload.data },
   async changePassword(currentPassword: string, newPassword: string): Promise<void> { await request('/member/password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }) }) },
+}
+
+// -- THE SEX ONLY NESTJS CLIENT --
+async function requestTso<T>(path: string, options?: RequestInit): Promise<T> {
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+  const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_SECRET_TOKEN || '';
+
+  const response = await fetch(`${API_BASE_URL}/admin${path}`, {
+    ...options,
+    headers: { 
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${ADMIN_TOKEN}`,
+      ...(options?.headers || {})
+    },
+  })
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Falha na API TSO: ${response.status} - ${errorText}`)
+  }
+  return response.json()
+}
+
+export const tsoApi = {
+  async getCreators() {
+    return requestTso<any[]>('/creators')
+  },
+  async getPosts() {
+    return requestTso<any[]>('/posts')
+  },
+  async getTrackingLinks() {
+    return requestTso<any[]>('/tracking/links')
+  },
+  async getTrackingClicks() {
+    return requestTso<any[]>('/tracking/clicks')
+  },
+  async getOrders() {
+    return requestTso<any[]>('/commerce/orders')
+  },
+  async createCreator(data: { memberId: string; username: string }) {
+    return requestTso<any>('/creators', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+  async createPost(data: { creatorId: string; title: string; visibility: string; priceCents: number; mediaKeys: string[] }) {
+    return requestTso<any>('/posts', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
 }
