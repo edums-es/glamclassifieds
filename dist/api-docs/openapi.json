@@ -26,8 +26,10 @@
     "/club/feed": { "get": { "tags": ["Club"], "summary": "Feed público", "responses": {"200":{"description":"Feed"}} } },
     "/member/club/dashboard": { "get": { "tags": ["Club", "Member"], "summary": "Estúdio do membro", "responses": {"200":{"description":"Canais e contagem de posts"},"401":{"description":"Sessão necessária"}} } },
     "/member/club/creators": { "post": { "tags": ["Club", "Member"], "summary": "Solicita criação de canal", "responses": {"201":{"description":"Canal em análise"},"422":{"description":"Perfil não aprovado ou dados inválidos"}} } },
-    "/member/club/posts": { "post": { "tags": ["Club", "Member"], "summary": "Envia publicação para análise", "responses": {"201":{"description":"Publicação em análise"}} } },
+    "/member/club/media": { "post": { "tags": ["Club", "Member"], "summary": "Envia imagem para canal ativo", "responses": {"201":{"description":"Imagem armazenada"},"422":{"description":"Mídia ou canal inválido"}} } },
+    "/member/club/posts": { "post": { "tags": ["Club", "Member"], "summary": "Envia publicação própria para análise", "responses": {"201":{"description":"Publicação em análise"}} } },
     "/admin/club/overview": { "get": { "tags": ["Club", "Admin"], "summary": "Métricas do Club", "responses": {"200":{"description":"Métricas"}} } },
+    "/admin/club/analytics": { "get": { "tags": ["Club", "Admin"], "summary": "Eventos e ranking de canais dos últimos 30 dias", "responses": {"200":{"description":"Analytics"}} } },
     "/admin/club/creators": { "get": { "tags": ["Club", "Admin"], "summary": "Fila de canais", "responses": {"200":{"description":"Canais"}} } },
     "/admin/club/posts": { "get": { "tags": ["Club", "Admin"], "summary": "Fila de publicações", "responses": {"200":{"description":"Publicações"}} } },
     "/admin/club/orders": { "get": { "tags": ["Club", "Admin"], "summary": "Pedidos do Club", "responses": {"200":{"description":"Pedidos"}} } }

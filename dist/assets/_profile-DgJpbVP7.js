@@ -1,1 +1,0 @@
-import{M as e,r as t,t as n}from"./index-BqXjD3-q.js";var r=e();function i(){let{profile:e}=n.useParams();return(0,r.jsx)(t,{id:e})}export{i as component};

@@ -92,6 +92,23 @@ CREATE TABLE IF NOT EXISTS club_posts (
     CONSTRAINT club_posts_creator_fk FOREIGN KEY (creator_id) REFERENCES club_creators(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS club_media (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    creator_id CHAR(36) NOT NULL,
+    post_id CHAR(36) NULL,
+    uploaded_by BIGINT UNSIGNED NOT NULL,
+    storage_path VARCHAR(255) NOT NULL UNIQUE,
+    original_name VARCHAR(180) NOT NULL,
+    mime_type VARCHAR(80) NOT NULL,
+    file_size INT UNSIGNED NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY club_media_creator_index (creator_id, created_at),
+    KEY club_media_post_index (post_id),
+    CONSTRAINT club_media_creator_fk FOREIGN KEY (creator_id) REFERENCES club_creators(id) ON DELETE CASCADE,
+    CONSTRAINT club_media_post_fk FOREIGN KEY (post_id) REFERENCES club_posts(id) ON DELETE SET NULL,
+    CONSTRAINT club_media_member_fk FOREIGN KEY (uploaded_by) REFERENCES members(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS club_subscriptions (
     id CHAR(36) NOT NULL PRIMARY KEY,
     member_id BIGINT UNSIGNED NOT NULL,

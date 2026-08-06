@@ -271,9 +271,9 @@ function AdminPage() {
             {activeSection === 'activity' && <ActivityPanel logs={auditLogs} loading={loading} onRefresh={() => void loadWorkspace()} />}
             {activeSection === 'security' && <SecurityPanel currentPassword={currentPassword} newPassword={newPassword} message={passwordMessage} loading={loading} onCurrent={setCurrentPassword} onNew={setNewPassword} onSubmit={changePassword} />}
             
-            {activeSection === 'tso-dashboard' && <TsoDashboard />}
-            {activeSection === 'tso-creators' && <TsoCreators />}
-            {activeSection === 'tso-posts' && <TsoPosts />}
+            {activeSection === 'tso-dashboard' && <TsoDashboardV2 />}
+            {activeSection === 'tso-creators' && <TsoCreatorsV2 />}
+            {activeSection === 'tso-posts' && <TsoPostsV2 />}
             {activeSection === 'tso-orders' && <TsoOrders />}
           </section>
         </div>
@@ -447,6 +447,34 @@ function TsoPosts() {
       )}
     </div>
   )
+}
+
+function TsoDashboardV2() {
+  const [overview, setOverview] = useState<Awaited<ReturnType<typeof clubApi.adminOverview>> | null>(null)
+  const [analytics, setAnalytics] = useState<Awaited<ReturnType<typeof clubApi.adminAnalytics>> | null>(null)
+  useEffect(() => { void Promise.all([clubApi.adminOverview(), clubApi.adminAnalytics()]).then(([nextOverview, nextAnalytics]) => { setOverview(nextOverview); setAnalytics(nextAnalytics) }) }, [])
+  const cards = [
+    ['Canais ativos', overview?.creators ?? '—'], ['Na fila de canais', overview?.creator_queue ?? '—'], ['Posts na fila', overview?.post_queue ?? '—'], ['Visualizações (30 dias)', analytics?.events.creator_viewed ?? '—'], ['Interesse em assinar', analytics?.events.subscribe_intent ?? '—'], ['Interesse em PPV', analytics?.events.ppv_intent ?? '—'],
+  ]
+  return <div className="space-y-6"><section className="rounded-3xl bg-gradient-to-br from-fuchsia-900 via-rose-900 to-slate-950 p-7 text-white shadow-xl"><p className="text-xs font-bold uppercase tracking-[.18em] text-fuchsia-200">TheSex Club · operação</p><h2 className="mt-2 text-3xl font-black">Conteúdo, moderação e demanda real.</h2><p className="mt-3 max-w-2xl text-sm leading-6 text-fuchsia-100">Os eventos abaixo são registros reais do navegador nos últimos 30 dias; nenhum dado de venda é inventado antes de um pagamento confirmado.</p></section><section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{cards.map(([label, value]) => <article key={label} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><p className="text-xs font-bold uppercase tracking-[.12em] text-slate-500">{label}</p><p className="mt-3 text-3xl font-black">{value}</p></article>)}</section><section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div><p className="text-xs font-bold uppercase tracking-[.14em] text-fuchsia-600">Ranking de atenção</p><h3 className="mt-1 text-lg font-extrabold">Canais mais acessados</h3></div><div className="mt-4 divide-y divide-slate-100">{analytics?.top_creators.length ? analytics.top_creators.map((creator, index) => <div key={creator.id} className="flex items-center justify-between py-3"><p className="font-bold"><span className="mr-3 text-fuchsia-600">#{index + 1}</span>{creator.display_name} <span className="font-normal text-slate-400">@{creator.username}</span></p><span className="rounded-full bg-fuchsia-50 px-2.5 py-1 text-xs font-bold text-fuchsia-700">{creator.events} eventos</span></div>) : <p className="py-8 text-sm text-slate-500">Ainda não há dados de navegação para este período.</p>}</div></section></div>
+}
+
+function TsoCreatorsV2() {
+  const [creators, setCreators] = useState<Awaited<ReturnType<typeof clubApi.adminCreators>>>([])
+  const [busy, setBusy] = useState('')
+  const refresh = () => clubApi.adminCreators().then(setCreators)
+  useEffect(() => { void refresh() }, [])
+  const moderate = async (id: string, status: 'active' | 'paused' | 'rejected') => { setBusy(id); try { await clubApi.moderateCreator(id, status); await refresh() } finally { setBusy('') } }
+  return <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><div className="flex items-end justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[.15em] text-fuchsia-600">Moderação Club</p><h2 className="mt-1 text-xl font-extrabold">Canais e elegibilidade</h2></div><button onClick={() => void refresh()} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold">Atualizar</button></div><div className="mt-5 divide-y divide-slate-100">{creators.length === 0 ? <EmptyState icon={Users} title="Nenhum canal" text="Canais solicitados aparecerão nesta fila." compact/> : creators.map(creator => <article key={creator.id} className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center"><div className="h-14 w-14 overflow-hidden rounded-xl bg-fuchsia-50">{creator.cover_photo && <img src={creator.cover_photo} alt="" className="h-full w-full object-cover"/>}</div><div className="min-w-0 flex-1"><p className="font-extrabold">{creator.display_name} <span className="font-normal text-slate-400">@{creator.username}</span></p><p className="mt-1 truncate text-xs text-slate-500">{creator.bio || 'Sem apresentação.'}</p></div><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold uppercase text-slate-600">{creator.status}</span><div className="flex gap-2"><button disabled={busy === creator.id} onClick={() => void moderate(creator.id, 'active')} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Aprovar</button><button disabled={busy === creator.id} onClick={() => void moderate(creator.id, 'paused')} className="rounded-lg border border-amber-200 px-3 py-2 text-xs font-bold text-amber-800 disabled:opacity-50">Pausar</button><button disabled={busy === creator.id} onClick={() => void moderate(creator.id, 'rejected')} className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50">Recusar</button></div></article>)}</div></section>
+}
+
+function TsoPostsV2() {
+  const [posts, setPosts] = useState<Awaited<ReturnType<typeof clubApi.adminPosts>>>([])
+  const [busy, setBusy] = useState('')
+  const refresh = () => clubApi.adminPosts().then(setPosts)
+  useEffect(() => { void refresh() }, [])
+  const moderate = async (id: string, status: 'published' | 'archived') => { setBusy(id); try { await clubApi.moderatePost(id, status); await refresh() } finally { setBusy('') } }
+  return <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6"><div className="flex items-end justify-between gap-4"><div><p className="text-xs font-bold uppercase tracking-[.15em] text-fuchsia-600">Revisão de conteúdo</p><h2 className="mt-1 text-xl font-extrabold">Publicações do Club</h2></div><button onClick={() => void refresh()} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold">Atualizar</button></div><div className="mt-5 grid gap-4 md:grid-cols-2">{posts.length === 0 ? <div className="md:col-span-2"><EmptyState icon={ImageIcon} title="Nenhuma publicação" text="Posts enviados por canais ativos aparecem aqui." compact/></div> : posts.map(post => <article key={post.id} className="overflow-hidden rounded-2xl border border-slate-200"><div className="grid aspect-[16/7] grid-cols-3 gap-px bg-slate-100">{post.media.slice(0, 3).map(media => <img key={media} src={media} alt="" className="h-full w-full object-cover"/>)}{post.media.length === 0 && <div className="col-span-3 flex items-center justify-center text-xs font-bold text-slate-400">Post sem mídia</div>}</div><div className="p-4"><div className="flex justify-between gap-3"><p className="font-extrabold">{post.creator_name || post.creator_username}</p><span className="text-xs font-bold uppercase text-slate-500">{post.status}</span></div><p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">{post.caption}</p><p className="mt-3 text-xs font-bold text-fuchsia-700">{post.visibility === 'ppv' ? `PPV · R$ ${(post.price_cents / 100).toFixed(2).replace('.', ',')}` : post.visibility}</p><div className="mt-4 flex gap-2"><button disabled={busy === post.id} onClick={() => void moderate(post.id, 'published')} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Publicar</button><button disabled={busy === post.id} onClick={() => void moderate(post.id, 'archived')} className="rounded-lg border border-rose-200 px-3 py-2 text-xs font-bold text-rose-700 disabled:opacity-50">Arquivar</button></div></div></article>)}</div></section>
 }
 
 function TsoTracking() {

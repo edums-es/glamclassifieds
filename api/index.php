@@ -415,6 +415,33 @@ function api_migrate_club(PDO $pdo): void
     $migrated = true;
 }
 
+function api_migrate_club_media(PDO $pdo): void
+{
+    static $migrated = false;
+    if ($migrated) {
+        return;
+    }
+
+    // A separate upgrade keeps existing Club installations forward-compatible.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS club_media (
+        id CHAR(36) NOT NULL PRIMARY KEY,
+        creator_id CHAR(36) NOT NULL,
+        post_id CHAR(36) NULL,
+        uploaded_by BIGINT UNSIGNED NOT NULL,
+        storage_path VARCHAR(255) NOT NULL UNIQUE,
+        original_name VARCHAR(180) NOT NULL,
+        mime_type VARCHAR(80) NOT NULL,
+        file_size INT UNSIGNED NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        KEY club_media_creator_index (creator_id, created_at),
+        KEY club_media_post_index (post_id),
+        CONSTRAINT club_media_creator_fk FOREIGN KEY (creator_id) REFERENCES club_creators(id) ON DELETE CASCADE,
+        CONSTRAINT club_media_post_fk FOREIGN KEY (post_id) REFERENCES club_posts(id) ON DELETE SET NULL,
+        CONSTRAINT club_media_member_fk FOREIGN KEY (uploaded_by) REFERENCES members(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $migrated = true;
+}
+
 function api_club_creator_output(array $creator): array
 {
     return [
@@ -432,16 +459,27 @@ function api_club_creator_output(array $creator): array
     ];
 }
 
-function api_club_post_output(array $post): array
+function api_club_post_output(array $post, ?PDO $pdo = null): array
 {
     $media = json_decode((string) ($post['media'] ?? '[]'), true);
+    $media = is_array($media) ? array_values(array_filter($media, 'is_string')) : [];
+    if ($pdo && $media !== []) {
+        $placeholders = implode(',', array_fill(0, count($media), '?'));
+        $statement = $pdo->prepare("SELECT id, storage_path FROM club_media WHERE id IN ($placeholders)");
+        $statement->execute($media);
+        $paths = [];
+        foreach ($statement->fetchAll() as $row) {
+            $paths[$row['id']] = '/api/' . ltrim((string) $row['storage_path'], '/');
+        }
+        $media = array_values(array_filter(array_map(static fn (string $id): ?string => $paths[$id] ?? null, $media)));
+    }
     return [
         'id' => $post['id'],
         'creator_id' => $post['creator_id'],
         'caption' => $post['caption'],
         'visibility' => $post['visibility'],
         'price_cents' => (int) $post['price_cents'],
-        'media' => is_array($media) ? array_values($media) : [],
+        'media' => $media,
         'status' => $post['status'],
         'published_at' => $post['published_at'],
         'created_at' => $post['created_at'],
@@ -493,6 +531,7 @@ try {
     api_migrate_members($pdo);
     api_migrate_profiles($pdo);
     api_migrate_club($pdo);
+    api_migrate_club_media($pdo);
 
     if ($method === 'GET' && ($_GET['seo_sitemap'] ?? '') === '1') {
         api_serve_sitemap($pdo);
@@ -900,12 +939,12 @@ try {
     if ($method === 'GET' && preg_match('#^/v1/club/creators/([a-z0-9][a-z0-9-]{2,48})/posts$#', $path, $matches)) {
         $statement = $pdo->prepare("SELECT cp.*, cc.username AS creator_username, cc.display_name AS creator_name FROM club_posts cp INNER JOIN club_creators cc ON cc.id = cp.creator_id WHERE cc.username = :username AND cc.status = 'active' AND cp.status = 'published' AND cp.visibility = 'public' ORDER BY cp.published_at DESC LIMIT 100");
         $statement->execute(['username' => $matches[1]]);
-        Response::json(['data' => array_map('api_club_post_output', $statement->fetchAll())]);
+        Response::json(['data' => array_map(static fn (array $post): array => api_club_post_output($post, $pdo), $statement->fetchAll())]);
     }
 
     if ($method === 'GET' && $path === '/v1/club/feed') {
         $statement = $pdo->query("SELECT cp.*, cc.username AS creator_username, cc.display_name AS creator_name FROM club_posts cp INNER JOIN club_creators cc ON cc.id = cp.creator_id WHERE cc.status = 'active' AND cp.status = 'published' AND cp.visibility = 'public' ORDER BY cp.published_at DESC LIMIT 100");
-        Response::json(['data' => array_map('api_club_post_output', $statement->fetchAll())]);
+        Response::json(['data' => array_map(static fn (array $post): array => api_club_post_output($post, $pdo), $statement->fetchAll())]);
     }
 
     if ($method === 'POST' && $path === '/v1/club/events') {
@@ -964,6 +1003,44 @@ try {
         Response::json(['data' => ['channels' => array_map('api_club_creator_output', $channels), 'post_count' => (int) $postCount->fetchColumn()]]);
     }
 
+    if ($method === 'POST' && $path === '/v1/member/club/media') {
+        api_validate_same_origin();
+        $member = api_require_member($pdo);
+        $creatorId = trim((string) ($_POST['creator_id'] ?? ''));
+        $file = $_FILES['media'] ?? null;
+        if (!preg_match('/^[a-f0-9-]{36}$/i', $creatorId) || !is_array($file) || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK || ($file['size'] ?? 0) < 1 || ($file['size'] ?? 0) > 8 * 1024 * 1024) {
+            Response::error('Upload invÃ¡lido. Envie uma imagem de atÃ© 8 MB para um canal ativo.', 422);
+        }
+        $creator = $pdo->prepare("SELECT id FROM club_creators WHERE id = :id AND member_id = :member_id AND status = 'active' LIMIT 1");
+        $creator->execute(['id' => $creatorId, 'member_id' => $member['id']]);
+        if (!$creator->fetch()) {
+            Response::error('Apenas canais ativos podem enviar conteÃºdo.', 422);
+        }
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mime = $finfo->file($file['tmp_name']);
+        $allowedTypes = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
+        if (!isset($allowedTypes[$mime])) {
+            Response::error('Envie apenas imagens JPG, PNG ou WEBP.', 422);
+        }
+        $id = api_uuid();
+        $directory = __DIR__ . '/uploads/club/' . $creatorId;
+        if (!mkdir($directory, 0755, true) && !is_dir($directory)) {
+            throw new RuntimeException('NÃ£o foi possÃ­vel preparar o armazenamento da imagem.');
+        }
+        $path = 'uploads/club/' . $creatorId . '/' . $id . '.' . $allowedTypes[$mime];
+        if (!move_uploaded_file($file['tmp_name'], __DIR__ . '/' . $path)) {
+            throw new RuntimeException('NÃ£o foi possÃ­vel salvar a imagem.');
+        }
+        try {
+            $statement = $pdo->prepare('INSERT INTO club_media (id, creator_id, uploaded_by, storage_path, original_name, mime_type, file_size) VALUES (:id, :creator_id, :uploaded_by, :storage_path, :original_name, :mime_type, :file_size)');
+            $statement->execute(['id' => $id, 'creator_id' => $creatorId, 'uploaded_by' => $member['id'], 'storage_path' => $path, 'original_name' => mb_substr((string) ($file['name'] ?? 'imagem'), 0, 180), 'mime_type' => $mime, 'file_size' => (int) $file['size']]);
+        } catch (Throwable $exception) {
+            @unlink(__DIR__ . '/' . $path);
+            throw $exception;
+        }
+        Response::json(['data' => ['id' => $id, 'url' => '/api/' . $path]], 201);
+    }
+
     if ($method === 'POST' && $path === '/v1/member/club/posts') {
         api_validate_same_origin();
         $member = api_require_member($pdo);
@@ -980,19 +1057,53 @@ try {
             Response::error('Publicações avulsas precisam ter valor mínimo de R$ 1,00.', 422);
         }
         foreach ($media as $item) {
-            if (!is_string($item) || mb_strlen($item) > 255) {
+            if (!is_string($item) || !preg_match('/^[a-f0-9-]{36}$/i', $item)) {
                 Response::error('Mídia inválida.', 422);
             }
         }
-        $creator = $pdo->prepare('SELECT id FROM club_creators WHERE id = :id AND member_id = :member_id LIMIT 1');
+        $creator = $pdo->prepare("SELECT id FROM club_creators WHERE id = :id AND member_id = :member_id AND status = 'active' LIMIT 1");
         $creator->execute(['id' => $creatorId, 'member_id' => $member['id']]);
         if (!$creator->fetch()) {
             Response::error('Canal não encontrado.', 404);
         }
+        if ($media !== []) {
+            $placeholders = implode(',', array_fill(0, count($media), '?'));
+            $mediaCheck = $pdo->prepare("SELECT COUNT(*) FROM club_media WHERE creator_id = ? AND post_id IS NULL AND id IN ($placeholders)");
+            $mediaCheck->execute(array_merge([$creatorId], array_values($media)));
+            if ((int) $mediaCheck->fetchColumn() !== count(array_unique($media))) {
+                Response::error('Uma ou mais imagens nÃ£o pertencem a este canal ou jÃ¡ foram usadas.', 422);
+            }
+        }
         $postId = api_uuid();
-        $statement = $pdo->prepare("INSERT INTO club_posts (id, creator_id, caption, visibility, price_cents, media, status) VALUES (:id, :creator_id, :caption, :visibility, :price, :media, 'pending')");
-        $statement->execute(['id' => $postId, 'creator_id' => $creatorId, 'caption' => $caption, 'visibility' => $visibility, 'price' => $price, 'media' => json_encode(array_values($media), JSON_UNESCAPED_UNICODE)]);
+        $pdo->beginTransaction();
+        try {
+            $statement = $pdo->prepare("INSERT INTO club_posts (id, creator_id, caption, visibility, price_cents, media, status) VALUES (:id, :creator_id, :caption, :visibility, :price, :media, 'pending')");
+            $statement->execute(['id' => $postId, 'creator_id' => $creatorId, 'caption' => $caption, 'visibility' => $visibility, 'price' => $price, 'media' => json_encode(array_values($media), JSON_UNESCAPED_UNICODE)]);
+            if ($media !== []) {
+                $mediaUpdate = $pdo->prepare("UPDATE club_media SET post_id = ? WHERE creator_id = ? AND post_id IS NULL AND id IN ($placeholders)");
+                $mediaUpdate->execute(array_merge([$postId, $creatorId], array_values($media)));
+            }
+            $pdo->commit();
+        } catch (Throwable $exception) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            throw $exception;
+        }
         Response::json(['data' => ['id' => $postId, 'status' => 'pending']], 201);
+    }
+
+    if ($method === 'GET' && $path === '/v1/admin/club/analytics') {
+        api_require_admin($pdo);
+        $totals = $pdo->query("SELECT event_type, COUNT(*) AS total FROM club_events WHERE created_at >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 30 DAY) GROUP BY event_type")->fetchAll();
+        $events = ['creator_viewed' => 0, 'post_opened' => 0, 'subscribe_intent' => 0, 'ppv_intent' => 0];
+        foreach ($totals as $total) {
+            if (array_key_exists($total['event_type'], $events)) {
+                $events[$total['event_type']] = (int) $total['total'];
+            }
+        }
+        $ranking = $pdo->query("SELECT cc.id, cc.display_name, cc.username, COUNT(ce.id) AS events FROM club_creators cc LEFT JOIN club_events ce ON ce.creator_id = cc.id AND ce.created_at >= DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 30 DAY) GROUP BY cc.id ORDER BY events DESC, cc.created_at DESC LIMIT 5")->fetchAll();
+        Response::json(['data' => ['period_days' => 30, 'events' => $events, 'top_creators' => $ranking]]);
     }
 
     if ($method === 'GET' && $path === '/v1/admin/club/overview') {
@@ -1032,7 +1143,7 @@ try {
     if ($method === 'GET' && $path === '/v1/admin/club/posts') {
         api_require_admin($pdo);
         $statement = $pdo->query("SELECT cp.*, cc.username AS creator_username, cc.display_name AS creator_name FROM club_posts cp INNER JOIN club_creators cc ON cc.id = cp.creator_id ORDER BY FIELD(cp.status, 'pending', 'draft', 'published', 'archived'), cp.created_at DESC LIMIT 300");
-        Response::json(['data' => array_map('api_club_post_output', $statement->fetchAll())]);
+        Response::json(['data' => array_map(static fn (array $post): array => api_club_post_output($post, $pdo), $statement->fetchAll())]);
     }
 
     if ($method === 'PATCH' && preg_match('#^/v1/admin/club/posts/([a-f0-9-]{36})$#i', $path, $matches)) {
