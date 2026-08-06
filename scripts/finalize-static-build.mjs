@@ -32,7 +32,7 @@ mkdirSync(DEST, { recursive: true })
 // Hashed JS and CSS filenames change on every build. Removing only these known,
 // build-owned paths avoids stale files accumulating in Git/deploys while preserving
 // host-managed files such as `_redirects`.
-for (const entry of ['assets', 'admin', 'create', 'profile', 'index.html']) {
+for (const entry of ['assets', 'admin', 'create', 'profile', 'api-docs', 'index.html']) {
   rmSync(join(DEST, entry), { recursive: true, force: true })
 }
 
