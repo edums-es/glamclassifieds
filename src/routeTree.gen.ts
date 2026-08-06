@@ -12,10 +12,12 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as MemberRouteImport } from './routes/member'
 import { Route as ExploreRouteImport } from './routes/explore'
 import { Route as CreateRouteImport } from './routes/create'
+import { Route as ClubRouteImport } from './routes/club'
 import { Route as AdminRouteImport } from './routes/admin'
 import { Route as RegionRouteImport } from './routes/$region'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProfileIdRouteImport } from './routes/profile.$id'
+import { Route as ClubUsernameRouteImport } from './routes/club.$username'
 import { Route as CategoryCityProfileRouteImport } from './routes/$category/$city/$profile'
 
 const MemberRoute = MemberRouteImport.update({
@@ -31,6 +33,11 @@ const ExploreRoute = ExploreRouteImport.update({
 const CreateRoute = CreateRouteImport.update({
   id: '/create',
   path: '/create',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ClubRoute = ClubRouteImport.update({
+  id: '/club',
+  path: '/club',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminRoute = AdminRouteImport.update({
@@ -53,6 +60,11 @@ const ProfileIdRoute = ProfileIdRouteImport.update({
   path: '/profile/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ClubUsernameRoute = ClubUsernameRouteImport.update({
+  id: '/$username',
+  path: '/$username',
+  getParentRoute: () => ClubRoute,
+} as any)
 const CategoryCityProfileRoute = CategoryCityProfileRouteImport.update({
   id: '/$category/$city/$profile',
   path: '/$category/$city/$profile',
@@ -63,9 +75,11 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$region': typeof RegionRoute
   '/admin': typeof AdminRoute
+  '/club': typeof ClubRouteWithChildren
   '/create': typeof CreateRoute
   '/explore': typeof ExploreRoute
   '/member': typeof MemberRoute
+  '/club/$username': typeof ClubUsernameRoute
   '/profile/$id': typeof ProfileIdRoute
   '/$category/$city/$profile': typeof CategoryCityProfileRoute
 }
@@ -73,9 +87,11 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$region': typeof RegionRoute
   '/admin': typeof AdminRoute
+  '/club': typeof ClubRouteWithChildren
   '/create': typeof CreateRoute
   '/explore': typeof ExploreRoute
   '/member': typeof MemberRoute
+  '/club/$username': typeof ClubUsernameRoute
   '/profile/$id': typeof ProfileIdRoute
   '/$category/$city/$profile': typeof CategoryCityProfileRoute
 }
@@ -84,9 +100,11 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/$region': typeof RegionRoute
   '/admin': typeof AdminRoute
+  '/club': typeof ClubRouteWithChildren
   '/create': typeof CreateRoute
   '/explore': typeof ExploreRoute
   '/member': typeof MemberRoute
+  '/club/$username': typeof ClubUsernameRoute
   '/profile/$id': typeof ProfileIdRoute
   '/$category/$city/$profile': typeof CategoryCityProfileRoute
 }
@@ -96,9 +114,11 @@ export interface FileRouteTypes {
     | '/'
     | '/$region'
     | '/admin'
+    | '/club'
     | '/create'
     | '/explore'
     | '/member'
+    | '/club/$username'
     | '/profile/$id'
     | '/$category/$city/$profile'
   fileRoutesByTo: FileRoutesByTo
@@ -106,9 +126,11 @@ export interface FileRouteTypes {
     | '/'
     | '/$region'
     | '/admin'
+    | '/club'
     | '/create'
     | '/explore'
     | '/member'
+    | '/club/$username'
     | '/profile/$id'
     | '/$category/$city/$profile'
   id:
@@ -116,9 +138,11 @@ export interface FileRouteTypes {
     | '/'
     | '/$region'
     | '/admin'
+    | '/club'
     | '/create'
     | '/explore'
     | '/member'
+    | '/club/$username'
     | '/profile/$id'
     | '/$category/$city/$profile'
   fileRoutesById: FileRoutesById
@@ -127,6 +151,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   RegionRoute: typeof RegionRoute
   AdminRoute: typeof AdminRoute
+  ClubRoute: typeof ClubRouteWithChildren
   CreateRoute: typeof CreateRoute
   ExploreRoute: typeof ExploreRoute
   MemberRoute: typeof MemberRoute
@@ -157,6 +182,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CreateRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/club': {
+      id: '/club'
+      path: '/club'
+      fullPath: '/club'
+      preLoaderRoute: typeof ClubRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/admin': {
       id: '/admin'
       path: '/admin'
@@ -185,6 +217,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProfileIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/club/$username': {
+      id: '/club/$username'
+      path: '/$username'
+      fullPath: '/club/$username'
+      preLoaderRoute: typeof ClubUsernameRouteImport
+      parentRoute: typeof ClubRoute
+    }
     '/$category/$city/$profile': {
       id: '/$category/$city/$profile'
       path: '/$category/$city/$profile'
@@ -195,10 +234,21 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface ClubRouteChildren {
+  ClubUsernameRoute: typeof ClubUsernameRoute
+}
+
+const ClubRouteChildren: ClubRouteChildren = {
+  ClubUsernameRoute: ClubUsernameRoute,
+}
+
+const ClubRouteWithChildren = ClubRoute._addFileChildren(ClubRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   RegionRoute: RegionRoute,
   AdminRoute: AdminRoute,
+  ClubRoute: ClubRouteWithChildren,
   CreateRoute: CreateRoute,
   ExploreRoute: ExploreRoute,
   MemberRoute: MemberRoute,

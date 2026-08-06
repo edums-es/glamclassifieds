@@ -1,0 +1,35 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "TheSex API",
+    "version": "1.1.0",
+    "description": "API da plataforma TheSex e do módulo TheSex Club. A autenticação é feita por sessão segura no mesmo domínio."
+  },
+  "servers": [{ "url": "/api/v1", "description": "Produção" }],
+  "tags": [
+    { "name": "Public", "description": "Catálogo e descoberta" },
+    { "name": "Member", "description": "Conta e estúdio do membro" },
+    { "name": "Admin", "description": "Operação restrita" },
+    { "name": "Club", "description": "Canais e conteúdo exclusivo" }
+  ],
+  "paths": {
+    "/health": { "get": { "tags": ["Public"], "summary": "Status da API", "responses": { "200": { "description": "Operacional" } } } },
+    "/profiles": { "get": { "tags": ["Public"], "summary": "Lista perfis publicados", "parameters": [{"name":"q","in":"query","schema":{"type":"string"}},{"name":"city","in":"query","schema":{"type":"string"}},{"name":"category","in":"query","schema":{"type":"string"}}], "responses": {"200":{"description":"Perfis"}} }, "post": { "tags": ["Member"], "summary": "Envia perfil para análise", "requestBody": {"required":true,"content":{"multipart/form-data":{"schema":{"type":"object"}}}}, "responses": {"201":{"description":"Enviado"},"422":{"description":"Validação"}} } },
+    "/member/register": { "post": { "tags": ["Member"], "summary": "Cria uma conta", "responses": {"201":{"description":"Conta criada"}} } },
+    "/member/login": { "post": { "tags": ["Member"], "summary": "Inicia sessão de membro", "responses": {"200":{"description":"Sessão iniciada"}} } },
+    "/member/dashboard": { "get": { "tags": ["Member"], "summary": "Resumo da conta", "responses": {"200":{"description":"Resumo"},"401":{"description":"Sessão necessária"}} } },
+    "/admin/login": { "post": { "tags": ["Admin"], "summary": "Inicia sessão administrativa", "responses": {"200":{"description":"Sessão iniciada"}} } },
+    "/admin/metrics": { "get": { "tags": ["Admin"], "summary": "Métricas de operação", "responses": {"200":{"description":"Métricas"},"401":{"description":"Sessão necessária"}} } },
+    "/club/creators": { "get": { "tags": ["Club"], "summary": "Lista canais ativos", "responses": {"200":{"description":"Canais ativos"}} } },
+    "/club/creators/{username}": { "get": { "tags": ["Club"], "summary": "Canal público", "parameters": [{"name":"username","in":"path","required":true,"schema":{"type":"string"}}], "responses": {"200":{"description":"Canal"},"404":{"description":"Canal não encontrado"}} } },
+    "/club/creators/{username}/posts": { "get": { "tags": ["Club"], "summary": "Publicações abertas do canal", "parameters": [{"name":"username","in":"path","required":true,"schema":{"type":"string"}}], "responses": {"200":{"description":"Publicações"}} } },
+    "/club/feed": { "get": { "tags": ["Club"], "summary": "Feed público", "responses": {"200":{"description":"Feed"}} } },
+    "/member/club/dashboard": { "get": { "tags": ["Club", "Member"], "summary": "Estúdio do membro", "responses": {"200":{"description":"Canais e contagem de posts"},"401":{"description":"Sessão necessária"}} } },
+    "/member/club/creators": { "post": { "tags": ["Club", "Member"], "summary": "Solicita criação de canal", "responses": {"201":{"description":"Canal em análise"},"422":{"description":"Perfil não aprovado ou dados inválidos"}} } },
+    "/member/club/posts": { "post": { "tags": ["Club", "Member"], "summary": "Envia publicação para análise", "responses": {"201":{"description":"Publicação em análise"}} } },
+    "/admin/club/overview": { "get": { "tags": ["Club", "Admin"], "summary": "Métricas do Club", "responses": {"200":{"description":"Métricas"}} } },
+    "/admin/club/creators": { "get": { "tags": ["Club", "Admin"], "summary": "Fila de canais", "responses": {"200":{"description":"Canais"}} } },
+    "/admin/club/posts": { "get": { "tags": ["Club", "Admin"], "summary": "Fila de publicações", "responses": {"200":{"description":"Publicações"}} } },
+    "/admin/club/orders": { "get": { "tags": ["Club", "Admin"], "summary": "Pedidos do Club", "responses": {"200":{"description":"Pedidos"}} } }
+  }
+}

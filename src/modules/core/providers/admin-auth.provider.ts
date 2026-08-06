@@ -11,7 +11,7 @@ export class AdminAuthProvider {
       throw new UnauthorizedException('Admin token not configured in environment');
     }
 
-    if (!authHeader || authHeader !== \Bearer \${adminToken}\) {
+    if (!authHeader || authHeader !== `Bearer ${adminToken}`) {
       throw new UnauthorizedException('Admin access required');
     }
   }

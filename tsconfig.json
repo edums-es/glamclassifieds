@@ -17,11 +17,10 @@
     "noImplicitAny": true,
     "strictBindCallApply": true,
     "forceConsistentCasingInFileNames": true,
-    "noFallbackTodos": true,
     "paths": {
       "@/*": ["src/*"]
     }
   },
-  "include": ["src/**/*", "test/**/*"],
-  "exclude": ["node_modules", "dist"]
+  "include": ["src/main.ts", "src/app.module.ts", "src/modules/**/*.ts", "src/shared/**/*.ts", "test/**/*.ts"],
+  "exclude": ["node_modules", "dist", "src/routes", "src/components", "src/lib/api.ts", "src/router.tsx", "src/routeTree.gen.ts"]
 }

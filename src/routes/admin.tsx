@@ -27,7 +27,7 @@ import {
   X,
 } from 'lucide-react'
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { adminApi, tsoApi, type Admin, type AdminMember, type AdminMetrics, type AuditLog, type ModerationProfile, type ProfileStatus } from '@/lib/api'
+import { adminApi, clubApi, type Admin, type AdminMember, type AdminMetrics, type AuditLog, type ModerationProfile, type ProfileStatus } from '@/lib/api'
 
 const STATUS_OPTIONS: { value: ProfileStatus; label: string; description: string; tone: string }[] = [
   { value: 'pending', label: 'Para revisar', description: 'Aguardando análise', tone: 'bg-amber-50 text-amber-800 ring-amber-200' },
@@ -55,7 +55,7 @@ function AdminPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [passwordVisible, setPasswordVisible] = useState(false)
-  const [activeSection, setActiveSection] = useState<'overview' | 'queue' | 'members' | 'activity' | 'security' | 'tso-dashboard' | 'tso-creators' | 'tso-posts' | 'tso-tracking' | 'tso-orders'>('overview')
+  const [activeSection, setActiveSection] = useState<'overview' | 'queue' | 'members' | 'activity' | 'security' | 'tso-dashboard' | 'tso-creators' | 'tso-posts' | 'tso-orders'>('overview')
   const [status, setStatus] = useState<ProfileStatus>('pending')
   const [profilesByStatus, setProfilesByStatus] = useState<Record<ProfileStatus, ModerationProfile[]>>(EMPTY_PROFILES)
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([])
@@ -199,10 +199,9 @@ function AdminPage() {
   ]
 
   const tsoNavItems: { id: typeof activeSection; label: string; icon: typeof LayoutDashboard }[] = [
-    { id: 'tso-dashboard', label: 'TSO Dashboard', icon: LayoutDashboard },
+    { id: 'tso-dashboard', label: 'Visão do Club', icon: LayoutDashboard },
     { id: 'tso-creators', label: 'Creators', icon: Users },
     { id: 'tso-posts', label: 'Posts (PPV)', icon: ImageIcon },
-    { id: 'tso-tracking', label: 'Tracking', icon: MapPin },
     { id: 'tso-orders', label: 'Vendas', icon: BadgeCheck },
   ]
 
@@ -230,7 +229,7 @@ function AdminPage() {
           </nav>
 
           <div className="mt-8 mb-2 px-3">
-            <p className="text-xs font-bold uppercase tracking-[.18em] text-fuchsia-500">The Sex Only</p>
+            <p className="text-xs font-bold uppercase tracking-[.18em] text-fuchsia-500">TheSex Club</p>
           </div>
           <nav className="flex gap-1 overflow-x-auto pb-1 lg:block lg:space-y-1 lg:overflow-visible">
             {tsoNavItems.map(item => {
@@ -258,7 +257,7 @@ function AdminPage() {
             <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
               <div>
                 <p className="text-xs font-bold uppercase tracking-[.17em] text-fuchsia-700">Central de confiança</p>
-                <h1 className="mt-1 text-xl font-extrabold tracking-tight sm:text-2xl">{activeSection === 'overview' ? 'Visão geral' : activeSection === 'queue' ? 'Fila de moderação' : activeSection === 'members' ? 'Contas e proprietários' : activeSection === 'activity' ? 'Histórico operacional' : activeSection.startsWith('tso-') ? 'The Sex Only' : 'Segurança da conta'}</h1>
+                <h1 className="mt-1 text-xl font-extrabold tracking-tight sm:text-2xl">{activeSection === 'overview' ? 'Visão geral' : activeSection === 'queue' ? 'Fila de moderação' : activeSection === 'members' ? 'Contas e proprietários' : activeSection === 'activity' ? 'Histórico operacional' : activeSection.startsWith('tso-') ? 'TheSex Club' : 'Segurança da conta'}</h1>
               </div>
               <button type="button" onClick={() => void loadWorkspace()} disabled={loading} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-bold shadow-sm transition hover:border-slate-400 disabled:opacity-60"><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} /><span className="hidden sm:inline">Atualizar dados</span></button>
             </div>
@@ -275,7 +274,6 @@ function AdminPage() {
             {activeSection === 'tso-dashboard' && <TsoDashboard />}
             {activeSection === 'tso-creators' && <TsoCreators />}
             {activeSection === 'tso-posts' && <TsoPosts />}
-            {activeSection === 'tso-tracking' && <TsoTracking />}
             {activeSection === 'tso-orders' && <TsoOrders />}
           </section>
         </div>
@@ -367,26 +365,16 @@ function TsoDashboard() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.all([
-      tsoApi.getCreators(),
-      tsoApi.getPosts(),
-      tsoApi.getOrders()
-    ]).then(([creators, posts, orders]) => {
-      const revenue = orders.filter((o: any) => o.status === 'completed').reduce((acc: number, curr: any) => acc + curr.amountCents, 0) / 100
-      setData({
-        creators: creators.length,
-        posts: posts.length,
-        sales: orders.length,
-        revenue
-      })
+    clubApi.adminOverview().then((overview) => {
+      setData({ creators: overview.creators, posts: overview.posts, sales: overview.paid_orders, revenue: overview.revenue_cents / 100 })
     }).finally(() => setLoading(false))
   }, [])
 
   return (
     <div className="space-y-6">
       <div className="rounded-3xl bg-gradient-to-br from-fuchsia-900 to-rose-900 p-8 text-white shadow-xl">
-        <h2 className="text-2xl font-extrabold tracking-tight">The Sex Only</h2>
-        <p className="mt-2 text-fuchsia-200">Painel de gerenciamento exclusivo da plataforma de conteúdo.</p>
+        <h2 className="text-2xl font-extrabold tracking-tight">TheSex Club</h2>
+        <p className="mt-2 text-fuchsia-200">Canais, publicações e receita da área de conteúdo exclusivo.</p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {[
@@ -410,7 +398,7 @@ function TsoCreators() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    tsoApi.getCreators().then(setCreators).finally(() => setLoading(false))
+    clubApi.adminCreators().then(setCreators).finally(() => setLoading(false))
   }, [])
 
   return (
@@ -438,7 +426,7 @@ function TsoPosts() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    tsoApi.getPosts().then(setPosts).finally(() => setLoading(false))
+    clubApi.adminPosts().then(setPosts).finally(() => setLoading(false))
   }, [])
 
   return (
@@ -466,7 +454,7 @@ function TsoTracking() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    tsoApi.getTrackingLinks().then(setLinks).finally(() => setLoading(false))
+    Promise.resolve([]).then(setLinks).finally(() => setLoading(false))
   }, [])
 
   return (
@@ -494,7 +482,7 @@ function TsoOrders() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    tsoApi.getOrders().then(setOrders).finally(() => setLoading(false))
+    clubApi.adminOrders().then(setOrders).finally(() => setLoading(false))
   }, [])
 
   return (
@@ -506,9 +494,9 @@ function TsoOrders() {
             <div key={o.id} className="py-3 flex justify-between items-center">
               <div>
                 <p className="font-bold">Pedido: {o.id.slice(0, 8)}</p>
-                <p className="text-xs text-slate-500">Valor: R$ {(o.amountCents / 100).toFixed(2)}</p>
+                <p className="text-xs text-slate-500">Valor: R$ {(o.amount_cents / 100).toFixed(2)}</p>
               </div>
-              <span className={`text-xs font-bold uppercase ${o.status === 'completed' ? 'text-emerald-600' : 'text-slate-400'}`}>{o.status}</span>
+              <span className={`text-xs font-bold uppercase ${o.status === 'paid' ? 'text-emerald-600' : 'text-slate-400'}`}>{o.status}</span>
             </div>
           ))}
         </div>

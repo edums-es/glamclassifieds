@@ -99,21 +99,36 @@ export const profilesApi = {
     city: string
     neighborhood: string
     price: string
-    contact_phone: string
+    contactPhone: string
     availability: string
     services: string[]
-    service_for: string[]
-    meeting_places: string[]
-    payment_methods: string[]
+    serviceFor: string[]
+    meetingPlaces: string[]
+    paymentMethods: string[]
     description: string
     tags: string[]
-  }): Promise<{ id: string }> {
-    const payload = await request<ApiEnvelope<{ id: string }>>('/profiles', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(values),
-    })
-    return payload.data
+    photos: File[]
+    adultConfirmed: boolean
+  }): Promise<{ message: string }> {
+    const form = new FormData()
+    form.set('name', values.name)
+    form.set('age', values.age)
+    form.set('category', values.category)
+    form.set('city', values.city)
+    form.set('neighborhood', values.neighborhood)
+    form.set('price', values.price)
+    form.set('contact_phone', values.contactPhone)
+    form.set('availability', values.availability)
+    form.set('description', values.description)
+    form.set('tags', JSON.stringify(values.tags))
+    form.set('services', JSON.stringify(values.services))
+    form.set('service_for', JSON.stringify(values.serviceFor))
+    form.set('meeting_places', JSON.stringify(values.meetingPlaces))
+    form.set('payment_methods', JSON.stringify(values.paymentMethods))
+    form.set('adult_confirmed', String(values.adultConfirmed))
+    values.photos.forEach(photo => form.append('photos[]', photo))
+    const payload = await request<{ message: string }>('/profiles', { method: 'POST', body: form })
+    return payload
   },
 
   async uploadPhoto(profileId: string, file: File): Promise<{ url: string }> {
@@ -202,53 +217,50 @@ export const memberApi = {
   async changePassword(currentPassword: string, newPassword: string): Promise<void> { await request('/member/password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }) }) },
 }
 
-// -- THE SEX ONLY NESTJS CLIENT --
-async function requestTso<T>(path: string, options?: RequestInit): Promise<T> {
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
-  const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_SECRET_TOKEN || '';
-
-  const response = await fetch(`${API_BASE_URL}/admin${path}`, {
-    ...options,
-    headers: { 
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${ADMIN_TOKEN}`,
-      ...(options?.headers || {})
-    },
-  })
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Falha na API TSO: ${response.status} - ${errorText}`)
-  }
-  return response.json()
+export type ClubCreator = {
+  id: string
+  username: string
+  display_name: string
+  bio: string
+  monthly_price_cents: number
+  status: 'pending' | 'active' | 'paused' | 'rejected'
+  profile_url: string | null
+  cover_photo: string | null
+  created_at: string
 }
 
-export const tsoApi = {
-  async getCreators() {
-    return requestTso<any[]>('/creators')
-  },
-  async getPosts() {
-    return requestTso<any[]>('/posts')
-  },
-  async getTrackingLinks() {
-    return requestTso<any[]>('/tracking/links')
-  },
-  async getTrackingClicks() {
-    return requestTso<any[]>('/tracking/clicks')
-  },
-  async getOrders() {
-    return requestTso<any[]>('/commerce/orders')
-  },
-  async createCreator(data: { memberId: string; username: string }) {
-    return requestTso<any>('/creators', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    })
-  },
-  async createPost(data: { creatorId: string; title: string; visibility: string; priceCents: number; mediaKeys: string[] }) {
-    return requestTso<any>('/posts', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    })
-  }
+export type ClubPost = {
+  id: string
+  creator_id: string
+  caption: string
+  visibility: 'public' | 'subscribers' | 'ppv'
+  price_cents: number
+  media: string[]
+  status: 'draft' | 'pending' | 'published' | 'archived'
+  published_at: string | null
+  created_at: string
+  creator_username?: string | null
+  creator_name?: string | null
+}
+
+export type ClubOverview = { creators: number; creator_queue: number; posts: number; post_queue: number; paid_orders: number; revenue_cents: number }
+export type ClubOrder = { id: string; kind: 'subscription' | 'ppv' | 'tip'; amount_cents: number; currency: string; status: 'pending' | 'paid' | 'failed' | 'refunded'; created_at: string; creator_username: string; member_email: string }
+
+// Club uses the same origin, session and admin boundary as the public platform.
+// It deliberately does not expose a browser-side secret or a second localhost API.
+export const clubApi = {
+  async creators(): Promise<ClubCreator[]> { const payload = await request<ApiEnvelope<ClubCreator[]>>('/club/creators'); return payload.data },
+  async creator(username: string): Promise<ClubCreator> { const payload = await request<ApiEnvelope<ClubCreator>>(`/club/creators/${encodeURIComponent(username)}`); return payload.data },
+  async creatorPosts(username: string): Promise<ClubPost[]> { const payload = await request<ApiEnvelope<ClubPost[]>>(`/club/creators/${encodeURIComponent(username)}/posts`); return payload.data },
+  async feed(): Promise<ClubPost[]> { const payload = await request<ApiEnvelope<ClubPost[]>>('/club/feed'); return payload.data },
+  async track(eventType: 'creator_viewed' | 'post_opened' | 'subscribe_intent' | 'ppv_intent', creatorId = '', postId = ''): Promise<void> { await request('/club/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event_type: eventType, creator_id: creatorId, post_id: postId }) }) },
+  async dashboard(): Promise<{ channels: ClubCreator[]; post_count: number }> { const payload = await request<ApiEnvelope<{ channels: ClubCreator[]; post_count: number }>>('/member/club/dashboard'); return payload.data },
+  async createCreator(values: { profileId: string; username: string; displayName: string; bio: string; monthlyPriceCents: number }): Promise<{ id: string; status: string }> { const payload = await request<ApiEnvelope<{ id: string; status: string }>>('/member/club/creators', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profile_id: values.profileId, username: values.username, display_name: values.displayName, bio: values.bio, monthly_price_cents: values.monthlyPriceCents }) }); return payload.data },
+  async createPost(values: { creatorId: string; caption: string; visibility: ClubPost['visibility']; priceCents: number; media: string[] }): Promise<{ id: string; status: string }> { const payload = await request<ApiEnvelope<{ id: string; status: string }>>('/member/club/posts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ creator_id: values.creatorId, caption: values.caption, visibility: values.visibility, price_cents: values.priceCents, media: values.media }) }); return payload.data },
+  async adminOverview(): Promise<ClubOverview> { const payload = await request<ApiEnvelope<ClubOverview>>('/admin/club/overview'); return payload.data },
+  async adminCreators(): Promise<ClubCreator[]> { const payload = await request<ApiEnvelope<ClubCreator[]>>('/admin/club/creators'); return payload.data },
+  async moderateCreator(id: string, status: ClubCreator['status']): Promise<void> { await request(`/admin/club/creators/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) }) },
+  async adminPosts(): Promise<ClubPost[]> { const payload = await request<ApiEnvelope<ClubPost[]>>('/admin/club/posts'); return payload.data },
+  async moderatePost(id: string, status: ClubPost['status']): Promise<void> { await request(`/admin/club/posts/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) }) },
+  async adminOrders(): Promise<ClubOrder[]> { const payload = await request<ApiEnvelope<ClubOrder[]>>('/admin/club/orders'); return payload.data },
 }

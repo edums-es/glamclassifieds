@@ -308,6 +308,148 @@ function api_migrate_members(PDO $pdo): void
     $migrated = true;
 }
 
+function api_migrate_club(PDO $pdo): void
+{
+    static $migrated = false;
+    if ($migrated) {
+        return;
+    }
+
+    // The Club lives beside the classifieds app while both products share the
+    // same member identity. The migration marker avoids metadata locks from
+    // running DDL on every PHP request after the first upgrade.
+    $pdo->exec("CREATE TABLE IF NOT EXISTS platform_migrations (
+        version VARCHAR(80) NOT NULL PRIMARY KEY,
+        applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $marker = $pdo->prepare('SELECT version FROM platform_migrations WHERE version = :version LIMIT 1');
+    $marker->execute(['version' => '20260806_club_foundation']);
+    if ($marker->fetch()) {
+        $migrated = true;
+        return;
+    }
+    $pdo->exec("CREATE TABLE IF NOT EXISTS club_creators (
+        id CHAR(36) NOT NULL PRIMARY KEY,
+        member_id BIGINT UNSIGNED NOT NULL,
+        profile_id CHAR(36) NOT NULL,
+        username VARCHAR(50) NOT NULL UNIQUE,
+        display_name VARCHAR(80) NOT NULL,
+        bio VARCHAR(1000) NULL,
+        monthly_price_cents INT UNSIGNED NOT NULL DEFAULT 0,
+        status ENUM('pending', 'active', 'paused', 'rejected') NOT NULL DEFAULT 'pending',
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY club_creators_profile_unique (profile_id),
+        KEY club_creators_member_index (member_id, created_at),
+        KEY club_creators_status_index (status, created_at),
+        CONSTRAINT club_creators_member_fk FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
+        CONSTRAINT club_creators_profile_fk FOREIGN KEY (profile_id) REFERENCES profiles(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS club_posts (
+        id CHAR(36) NOT NULL PRIMARY KEY,
+        creator_id CHAR(36) NOT NULL,
+        caption VARCHAR(2200) NOT NULL,
+        visibility ENUM('public', 'subscribers', 'ppv') NOT NULL DEFAULT 'subscribers',
+        price_cents INT UNSIGNED NOT NULL DEFAULT 0,
+        media JSON NOT NULL,
+        status ENUM('draft', 'pending', 'published', 'archived') NOT NULL DEFAULT 'draft',
+        published_at TIMESTAMP NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY club_posts_feed_index (status, visibility, published_at),
+        KEY club_posts_creator_index (creator_id, created_at),
+        CONSTRAINT club_posts_creator_fk FOREIGN KEY (creator_id) REFERENCES club_creators(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS club_subscriptions (
+        id CHAR(36) NOT NULL PRIMARY KEY,
+        member_id BIGINT UNSIGNED NOT NULL,
+        creator_id CHAR(36) NOT NULL,
+        status ENUM('pending', 'active', 'cancelled', 'expired') NOT NULL DEFAULT 'pending',
+        amount_cents INT UNSIGNED NOT NULL,
+        started_at TIMESTAMP NULL,
+        ends_at TIMESTAMP NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY club_subscriptions_member_index (member_id, status),
+        KEY club_subscriptions_creator_index (creator_id, status),
+        CONSTRAINT club_subscriptions_member_fk FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
+        CONSTRAINT club_subscriptions_creator_fk FOREIGN KEY (creator_id) REFERENCES club_creators(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS club_orders (
+        id CHAR(36) NOT NULL PRIMARY KEY,
+        member_id BIGINT UNSIGNED NOT NULL,
+        creator_id CHAR(36) NOT NULL,
+        post_id CHAR(36) NULL,
+        kind ENUM('subscription', 'ppv', 'tip') NOT NULL,
+        amount_cents INT UNSIGNED NOT NULL,
+        currency CHAR(3) NOT NULL DEFAULT 'BRL',
+        status ENUM('pending', 'paid', 'failed', 'refunded') NOT NULL DEFAULT 'pending',
+        gateway_reference VARCHAR(120) NULL UNIQUE,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY club_orders_member_index (member_id, created_at),
+        KEY club_orders_creator_index (creator_id, created_at),
+        KEY club_orders_status_index (status, created_at),
+        CONSTRAINT club_orders_member_fk FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE,
+        CONSTRAINT club_orders_creator_fk FOREIGN KEY (creator_id) REFERENCES club_creators(id) ON DELETE CASCADE,
+        CONSTRAINT club_orders_post_fk FOREIGN KEY (post_id) REFERENCES club_posts(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS club_events (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        creator_id CHAR(36) NULL,
+        post_id CHAR(36) NULL,
+        member_id BIGINT UNSIGNED NULL,
+        event_type VARCHAR(48) NOT NULL,
+        metadata JSON NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        KEY club_events_creator_index (creator_id, created_at),
+        KEY club_events_post_index (post_id, created_at),
+        KEY club_events_type_index (event_type, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $pdo->prepare('INSERT INTO platform_migrations (version) VALUES (:version)')->execute(['version' => '20260806_club_foundation']);
+    $migrated = true;
+}
+
+function api_club_creator_output(array $creator): array
+{
+    return [
+        'id' => $creator['id'],
+        'username' => $creator['username'],
+        'display_name' => $creator['display_name'],
+        'bio' => $creator['bio'] ?? '',
+        'monthly_price_cents' => (int) $creator['monthly_price_cents'],
+        'status' => $creator['status'],
+        'profile_url' => isset($creator['profile_id'], $creator['category'], $creator['city'], $creator['profile_name'])
+            ? api_public_profile_path(['id' => $creator['profile_id'], 'category' => $creator['category'], 'city' => $creator['city'], 'display_name' => $creator['profile_name']])
+            : null,
+        'cover_photo' => !empty($creator['cover_photo']) ? '/api/' . ltrim((string) $creator['cover_photo'], '/') : null,
+        'created_at' => $creator['created_at'],
+    ];
+}
+
+function api_club_post_output(array $post): array
+{
+    $media = json_decode((string) ($post['media'] ?? '[]'), true);
+    return [
+        'id' => $post['id'],
+        'creator_id' => $post['creator_id'],
+        'caption' => $post['caption'],
+        'visibility' => $post['visibility'],
+        'price_cents' => (int) $post['price_cents'],
+        'media' => is_array($media) ? array_values($media) : [],
+        'status' => $post['status'],
+        'published_at' => $post['published_at'],
+        'created_at' => $post['created_at'],
+        'creator_username' => $post['creator_username'] ?? null,
+        'creator_name' => $post['creator_name'] ?? null,
+    ];
+}
+
 function api_admin_profile_output(array $profile, array $photos): array
 {
     return array_merge(api_profile_output($profile, $photos), [
@@ -350,6 +492,7 @@ try {
     $pdo = Database::connect();
     api_migrate_members($pdo);
     api_migrate_profiles($pdo);
+    api_migrate_club($pdo);
 
     if ($method === 'GET' && ($_GET['seo_sitemap'] ?? '') === '1') {
         api_serve_sitemap($pdo);
@@ -736,6 +879,182 @@ try {
         $photoStatement = $pdo->prepare('SELECT path FROM profile_photos WHERE profile_id = :profile_id ORDER BY position ASC');
         $photoStatement->execute(['profile_id' => $matches[1]]);
         Response::json(['data' => api_admin_profile_output($profile, $photoStatement->fetchAll())]);
+    }
+
+    // TheSex Club: public discovery returns only approved creators and posts.
+    if ($method === 'GET' && $path === '/v1/club/creators') {
+        $statement = $pdo->query("SELECT c.*, p.category, p.city, p.display_name AS profile_name, (SELECT pp.path FROM profile_photos pp WHERE pp.profile_id = c.profile_id ORDER BY pp.position ASC LIMIT 1) AS cover_photo FROM club_creators c INNER JOIN profiles p ON p.id = c.profile_id WHERE c.status = 'active' AND p.status = 'active' ORDER BY c.created_at DESC LIMIT 100");
+        Response::json(['data' => array_map('api_club_creator_output', $statement->fetchAll())]);
+    }
+
+    if ($method === 'GET' && preg_match('#^/v1/club/creators/([a-z0-9][a-z0-9-]{2,48})$#', $path, $matches)) {
+        $statement = $pdo->prepare("SELECT c.*, p.category, p.city, p.display_name AS profile_name, (SELECT pp.path FROM profile_photos pp WHERE pp.profile_id = c.profile_id ORDER BY pp.position ASC LIMIT 1) AS cover_photo FROM club_creators c INNER JOIN profiles p ON p.id = c.profile_id WHERE c.username = :username AND c.status = 'active' AND p.status = 'active' LIMIT 1");
+        $statement->execute(['username' => $matches[1]]);
+        $creator = $statement->fetch();
+        if (!$creator) {
+            Response::error('Canal não encontrado.', 404);
+        }
+        Response::json(['data' => api_club_creator_output($creator)]);
+    }
+
+    if ($method === 'GET' && preg_match('#^/v1/club/creators/([a-z0-9][a-z0-9-]{2,48})/posts$#', $path, $matches)) {
+        $statement = $pdo->prepare("SELECT cp.*, cc.username AS creator_username, cc.display_name AS creator_name FROM club_posts cp INNER JOIN club_creators cc ON cc.id = cp.creator_id WHERE cc.username = :username AND cc.status = 'active' AND cp.status = 'published' AND cp.visibility = 'public' ORDER BY cp.published_at DESC LIMIT 100");
+        $statement->execute(['username' => $matches[1]]);
+        Response::json(['data' => array_map('api_club_post_output', $statement->fetchAll())]);
+    }
+
+    if ($method === 'GET' && $path === '/v1/club/feed') {
+        $statement = $pdo->query("SELECT cp.*, cc.username AS creator_username, cc.display_name AS creator_name FROM club_posts cp INNER JOIN club_creators cc ON cc.id = cp.creator_id WHERE cc.status = 'active' AND cp.status = 'published' AND cp.visibility = 'public' ORDER BY cp.published_at DESC LIMIT 100");
+        Response::json(['data' => array_map('api_club_post_output', $statement->fetchAll())]);
+    }
+
+    if ($method === 'POST' && $path === '/v1/club/events') {
+        api_validate_same_origin();
+        $body = api_json_body();
+        $type = trim((string) ($body['event_type'] ?? ''));
+        $creatorId = trim((string) ($body['creator_id'] ?? ''));
+        $postId = trim((string) ($body['post_id'] ?? ''));
+        if (!in_array($type, ['creator_viewed', 'post_opened', 'subscribe_intent', 'ppv_intent'], true) || ($creatorId !== '' && !preg_match('/^[a-f0-9-]{36}$/i', $creatorId)) || ($postId !== '' && !preg_match('/^[a-f0-9-]{36}$/i', $postId))) {
+            Response::error('Evento inválido.', 422);
+        }
+        $member = api_optional_member($pdo);
+        $statement = $pdo->prepare('INSERT INTO club_events (creator_id, post_id, member_id, event_type, metadata) VALUES (:creator_id, :post_id, :member_id, :event_type, NULL)');
+        $statement->execute(['creator_id' => $creatorId ?: null, 'post_id' => $postId ?: null, 'member_id' => $member['id'] ?? null, 'event_type' => $type]);
+        Response::json(['data' => ['recorded' => true]], 201);
+    }
+
+    // A Club channel belongs to an approved profile owned by the signed-in member.
+    if ($method === 'POST' && $path === '/v1/member/club/creators') {
+        api_validate_same_origin();
+        $member = api_require_member($pdo);
+        $body = api_json_body();
+        $profileId = trim((string) ($body['profile_id'] ?? ''));
+        $username = strtolower(trim((string) ($body['username'] ?? '')));
+        $displayName = trim((string) ($body['display_name'] ?? ''));
+        $bio = trim((string) ($body['bio'] ?? ''));
+        $price = filter_var($body['monthly_price_cents'] ?? 0, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0, 'max_range' => 999999]]);
+        if (!preg_match('/^[a-f0-9-]{36}$/i', $profileId) || !preg_match('/^[a-z0-9][a-z0-9-]{2,48}$/', $username) || $displayName === '' || mb_strlen($displayName) > 80 || mb_strlen($bio) > 1000 || $price === false) {
+            Response::error('Revise os dados do canal.', 422);
+        }
+        $profile = $pdo->prepare("SELECT id FROM profiles WHERE id = :id AND member_id = :member_id AND status = 'active' LIMIT 1");
+        $profile->execute(['id' => $profileId, 'member_id' => $member['id']]);
+        if (!$profile->fetch()) {
+            Response::error('Escolha um perfil aprovado da sua conta.', 422);
+        }
+        try {
+            $creatorId = api_uuid();
+            $statement = $pdo->prepare('INSERT INTO club_creators (id, member_id, profile_id, username, display_name, bio, monthly_price_cents) VALUES (:id, :member_id, :profile_id, :username, :display_name, :bio, :price)');
+            $statement->execute(['id' => $creatorId, 'member_id' => $member['id'], 'profile_id' => $profileId, 'username' => $username, 'display_name' => $displayName, 'bio' => $bio ?: null, 'price' => $price]);
+        } catch (PDOException $exception) {
+            if ($exception->getCode() === '23000') {
+                Response::error('Este perfil ou nome de canal já está em uso.', 409);
+            }
+            throw $exception;
+        }
+        Response::json(['data' => ['id' => $creatorId, 'status' => 'pending']], 201);
+    }
+
+    if ($method === 'GET' && $path === '/v1/member/club/dashboard') {
+        $member = api_require_member($pdo);
+        $statement = $pdo->prepare('SELECT * FROM club_creators WHERE member_id = :member_id ORDER BY created_at DESC');
+        $statement->execute(['member_id' => $member['id']]);
+        $channels = $statement->fetchAll();
+        $postCount = $pdo->prepare('SELECT COUNT(*) FROM club_posts cp INNER JOIN club_creators cc ON cc.id = cp.creator_id WHERE cc.member_id = :member_id');
+        $postCount->execute(['member_id' => $member['id']]);
+        Response::json(['data' => ['channels' => array_map('api_club_creator_output', $channels), 'post_count' => (int) $postCount->fetchColumn()]]);
+    }
+
+    if ($method === 'POST' && $path === '/v1/member/club/posts') {
+        api_validate_same_origin();
+        $member = api_require_member($pdo);
+        $body = api_json_body();
+        $creatorId = trim((string) ($body['creator_id'] ?? ''));
+        $caption = trim((string) ($body['caption'] ?? ''));
+        $visibility = trim((string) ($body['visibility'] ?? 'subscribers'));
+        $price = filter_var($body['price_cents'] ?? 0, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0, 'max_range' => 999999]]);
+        $media = $body['media'] ?? [];
+        if (!preg_match('/^[a-f0-9-]{36}$/i', $creatorId) || $caption === '' || mb_strlen($caption) > 2200 || !in_array($visibility, ['public', 'subscribers', 'ppv'], true) || $price === false || !is_array($media) || count($media) > 12) {
+            Response::error('Revise os dados da publicação.', 422);
+        }
+        if ($visibility === 'ppv' && $price < 100) {
+            Response::error('Publicações avulsas precisam ter valor mínimo de R$ 1,00.', 422);
+        }
+        foreach ($media as $item) {
+            if (!is_string($item) || mb_strlen($item) > 255) {
+                Response::error('Mídia inválida.', 422);
+            }
+        }
+        $creator = $pdo->prepare('SELECT id FROM club_creators WHERE id = :id AND member_id = :member_id LIMIT 1');
+        $creator->execute(['id' => $creatorId, 'member_id' => $member['id']]);
+        if (!$creator->fetch()) {
+            Response::error('Canal não encontrado.', 404);
+        }
+        $postId = api_uuid();
+        $statement = $pdo->prepare("INSERT INTO club_posts (id, creator_id, caption, visibility, price_cents, media, status) VALUES (:id, :creator_id, :caption, :visibility, :price, :media, 'pending')");
+        $statement->execute(['id' => $postId, 'creator_id' => $creatorId, 'caption' => $caption, 'visibility' => $visibility, 'price' => $price, 'media' => json_encode(array_values($media), JSON_UNESCAPED_UNICODE)]);
+        Response::json(['data' => ['id' => $postId, 'status' => 'pending']], 201);
+    }
+
+    if ($method === 'GET' && $path === '/v1/admin/club/overview') {
+        api_require_admin($pdo);
+        Response::json(['data' => [
+            'creators' => (int) $pdo->query("SELECT COUNT(*) FROM club_creators WHERE status = 'active'")->fetchColumn(),
+            'creator_queue' => (int) $pdo->query("SELECT COUNT(*) FROM club_creators WHERE status = 'pending'")->fetchColumn(),
+            'posts' => (int) $pdo->query("SELECT COUNT(*) FROM club_posts WHERE status = 'published'")->fetchColumn(),
+            'post_queue' => (int) $pdo->query("SELECT COUNT(*) FROM club_posts WHERE status = 'pending'")->fetchColumn(),
+            'paid_orders' => (int) $pdo->query("SELECT COUNT(*) FROM club_orders WHERE status = 'paid'")->fetchColumn(),
+            'revenue_cents' => (int) $pdo->query("SELECT COALESCE(SUM(amount_cents), 0) FROM club_orders WHERE status = 'paid'")->fetchColumn(),
+        ]]);
+    }
+
+    if ($method === 'GET' && $path === '/v1/admin/club/creators') {
+        api_require_admin($pdo);
+        $statement = $pdo->query("SELECT c.*, p.category, p.city, p.display_name AS profile_name, (SELECT pp.path FROM profile_photos pp WHERE pp.profile_id = c.profile_id ORDER BY pp.position ASC LIMIT 1) AS cover_photo FROM club_creators c INNER JOIN profiles p ON p.id = c.profile_id ORDER BY FIELD(c.status, 'pending', 'active', 'paused', 'rejected'), c.created_at DESC LIMIT 200");
+        Response::json(['data' => array_map('api_club_creator_output', $statement->fetchAll())]);
+    }
+
+    if ($method === 'PATCH' && preg_match('#^/v1/admin/club/creators/([a-f0-9-]{36})$#i', $path, $matches)) {
+        api_validate_same_origin();
+        $admin = api_require_admin($pdo);
+        $status = (string) (api_json_body()['status'] ?? '');
+        if (!in_array($status, ['pending', 'active', 'paused', 'rejected'], true)) {
+            Response::error('Status de canal inválido.', 422);
+        }
+        $statement = $pdo->prepare('UPDATE club_creators SET status = :status WHERE id = :id');
+        $statement->execute(['status' => $status, 'id' => $matches[1]]);
+        if ($statement->rowCount() === 0) {
+            Response::error('Canal não encontrado.', 404);
+        }
+        api_audit($pdo, (int) $admin['id'], 'club_creator_moderated', null, ['creator_id' => $matches[1], 'status' => $status]);
+        Response::json(['data' => ['id' => $matches[1], 'status' => $status]]);
+    }
+
+    if ($method === 'GET' && $path === '/v1/admin/club/posts') {
+        api_require_admin($pdo);
+        $statement = $pdo->query("SELECT cp.*, cc.username AS creator_username, cc.display_name AS creator_name FROM club_posts cp INNER JOIN club_creators cc ON cc.id = cp.creator_id ORDER BY FIELD(cp.status, 'pending', 'draft', 'published', 'archived'), cp.created_at DESC LIMIT 300");
+        Response::json(['data' => array_map('api_club_post_output', $statement->fetchAll())]);
+    }
+
+    if ($method === 'PATCH' && preg_match('#^/v1/admin/club/posts/([a-f0-9-]{36})$#i', $path, $matches)) {
+        api_validate_same_origin();
+        $admin = api_require_admin($pdo);
+        $status = (string) (api_json_body()['status'] ?? '');
+        if (!in_array($status, ['draft', 'pending', 'published', 'archived'], true)) {
+            Response::error('Status de publicação inválido.', 422);
+        }
+        $statement = $pdo->prepare("UPDATE club_posts SET status = :status, published_at = CASE WHEN :status = 'published' THEN COALESCE(published_at, CURRENT_TIMESTAMP) ELSE published_at END WHERE id = :id");
+        $statement->execute(['status' => $status, 'id' => $matches[1]]);
+        if ($statement->rowCount() === 0) {
+            Response::error('Publicação não encontrada.', 404);
+        }
+        api_audit($pdo, (int) $admin['id'], 'club_post_moderated', null, ['post_id' => $matches[1], 'status' => $status]);
+        Response::json(['data' => ['id' => $matches[1], 'status' => $status]]);
+    }
+
+    if ($method === 'GET' && $path === '/v1/admin/club/orders') {
+        api_require_admin($pdo);
+        $statement = $pdo->query("SELECT co.id, co.kind, co.amount_cents, co.currency, co.status, co.created_at, cc.username AS creator_username, m.email AS member_email FROM club_orders co INNER JOIN club_creators cc ON cc.id = co.creator_id INNER JOIN members m ON m.id = co.member_id ORDER BY co.created_at DESC LIMIT 300");
+        Response::json(['data' => $statement->fetchAll()]);
     }
 
     if ($method === 'GET' && $path === '/v1/profiles') {
