@@ -1,0 +1,2 @@
+# Assets are kept as regular Git files. The repository does not use a Git LFS
+# endpoint, so LFS filters would leave deployments with unusable media files.

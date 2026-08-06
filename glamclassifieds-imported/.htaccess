@@ -1,0 +1,30 @@
+Options -Indexes
+DirectoryIndex dist/index.html
+RewriteEngine On
+
+# Keep the sitemap dynamic so public profiles are added automatically.
+RewriteRule ^sitemap\.xml$ api/index.php?seo_sitemap=1 [END,QSA]
+
+# These crawler-facing files are emitted inside /dist with the static build.
+RewriteRule ^robots\.txt$ dist/robots.txt [END]
+
+# Keep the PHP API outside the SPA fallback.
+RewriteRule ^api(?:/|$) - [END]
+
+# The one-time installer is a PHP page, not a client-side route.
+RewriteRule ^install(?:/|$) - [END]
+
+# Vite emits absolute /assets URLs. The production build lives in /dist.
+RewriteRule ^assets/(.+)$ dist/assets/$1 [END]
+
+# Do not send real files (including files that were internally rewritten above)
+# back through the SPA fallback.
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [END]
+
+# Serve pre-rendered pages when they exist, otherwise let the client router handle it.
+RewriteCond %{DOCUMENT_ROOT}/dist/$1/index.html -f
+RewriteRule ^(.+?)/?$ dist/$1/index.html [END]
+RewriteRule ^$ dist/index.html [END]
+RewriteRule ^.+$ dist/index.html [END]

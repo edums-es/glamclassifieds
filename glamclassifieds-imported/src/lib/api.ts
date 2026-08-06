@@ -1,0 +1,254 @@
+import { publicProfilePath } from '@/lib/profile-url'
+
+export type Profile = {
+  id: string
+  name: string
+  age: number
+  category: string
+  city: string
+  neighborhood: string
+  price: string
+  contact_phone: string
+  availability: string
+  services: string[]
+  service_for: string[]
+  meeting_places: string[]
+  payment_methods: string[]
+  photos: string[]
+  description: string
+  tags: string[]
+  is_featured: boolean
+}
+
+export type Admin = {
+  id: number
+  email: string
+}
+
+export type Member = {
+  id: number
+  email: string
+  display_name: string
+  marketing_opt_in: boolean
+}
+
+export type MemberDashboard = {
+  member: Member
+  counts: Record<ProfileStatus, number>
+}
+
+export type ProfileStatus = 'pending' | 'active' | 'rejected' | 'archived'
+
+export type ModerationProfile = Profile & {
+  status: ProfileStatus
+  moderation_note: string
+  created_at: string
+  updated_at: string
+  member_id: number | null
+  member_email: string
+  auto_approved: boolean
+}
+
+export type AdminMetrics = { profiles: Record<ProfileStatus, number>; members: number; auto_approved: number; submitted_today: number; submitted_last_7_days: number; generated_at: string }
+export type AdminMember = { id: number; email: string; display_name: string; marketing_opt_in: boolean; created_at: string; updated_at: string; profile_count: number; active_profile_count: number; last_profile_at: string | null }
+
+export type AuditLog = {
+  action: string
+  profile_id: string | null
+  details: Record<string, unknown>
+  created_at: string
+  admin_email: string
+}
+
+type ApiEnvelope<T> = { data: T }
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`/api/v1${path}`, {
+    headers: { Accept: 'application/json', ...(init?.headers ?? {}) },
+    credentials: 'same-origin',
+    ...init,
+  })
+  const payload = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    throw new Error(payload.error || 'Não foi possível concluir a solicitação.')
+  }
+
+  return payload as T
+}
+
+export const profilesApi = {
+  async list(filters: { q?: string; city?: string; category?: string } = {}): Promise<Profile[]> {
+    const search = new URLSearchParams()
+    if (filters.q) search.set('q', filters.q)
+    if (filters.city) search.set('city', filters.city)
+    if (filters.category) search.set('category', filters.category)
+    const payload = await request<ApiEnvelope<Profile[]>>(`/profiles${search.size ? `?${search}` : ''}`)
+    return payload.data.map((profile) => ({ ...profile, id: publicProfilePath(profile) }))
+  },
+
+  async get(id: string): Promise<Profile> {
+    const payload = await request<ApiEnvelope<Profile>>(`/profiles/${encodeURIComponent(id)}`)
+    return payload.data
+  },
+
+  async submit(values: {
+    name: string
+    age: string
+    category: string
+    city: string
+    neighborhood: string
+    price: string
+    contact_phone: string
+    availability: string
+    services: string[]
+    service_for: string[]
+    meeting_places: string[]
+    payment_methods: string[]
+    description: string
+    tags: string[]
+  }): Promise<{ id: string }> {
+    const payload = await request<ApiEnvelope<{ id: string }>>('/profiles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(values),
+    })
+    return payload.data
+  },
+
+  async uploadPhoto(profileId: string, file: File): Promise<{ url: string }> {
+    const formData = new FormData()
+    formData.append('photo', file)
+    const payload = await request<ApiEnvelope<{ url: string }>>(`/profiles/${encodeURIComponent(profileId)}/photos`, {
+      method: 'POST',
+      body: formData,
+    })
+    return payload.data
+  },
+}
+
+export const adminApi = {
+  async login(email: string, password: string): Promise<Admin> {
+    const payload = await request<ApiEnvelope<Admin>>('/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    })
+    return payload.data
+  },
+
+  async logout(): Promise<void> {
+    await request('/admin/logout', { method: 'POST' })
+  },
+
+  async me(): Promise<Admin> {
+    const payload = await request<ApiEnvelope<Admin>>('/admin/me')
+    return payload.data
+  },
+
+  async listProfiles(status: ProfileStatus): Promise<ModerationProfile[]> {
+    const payload = await request<ApiEnvelope<ModerationProfile[]>>(`/admin/profiles?status=${status}`)
+    return payload.data
+  },
+  async metrics(): Promise<AdminMetrics> { const payload = await request<ApiEnvelope<AdminMetrics>>('/admin/metrics'); return payload.data },
+  async members(query = ''): Promise<AdminMember[]> { const payload = await request<ApiEnvelope<AdminMember[]>>(`/admin/members${query ? `?q=${encodeURIComponent(query)}` : ''}`); return payload.data },
+  async updateMember(id: number, values: { displayName: string; marketingOptIn: boolean }): Promise<void> { await request(`/admin/members/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ display_name: values.displayName, marketing_opt_in: values.marketingOptIn }) }) },
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    await request('/admin/password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    })
+  },
+
+  async audit(): Promise<AuditLog[]> {
+    const payload = await request<ApiEnvelope<AuditLog[]>>('/admin/audit')
+    return payload.data
+  },
+
+  async updateProfile(id: string, changes: { status: ProfileStatus; is_featured: boolean; autoApproved?: boolean; moderationNote?: string; profile?: Partial<Pick<Profile, 'name' | 'city' | 'neighborhood' | 'price' | 'contact_phone' | 'availability' | 'description'>> }): Promise<ModerationProfile> {
+    const payload = await request<ApiEnvelope<ModerationProfile>>(`/admin/profiles/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: changes.status, is_featured: changes.is_featured, auto_approved: changes.autoApproved ?? false, moderation_note: changes.moderationNote ?? '', profile: changes.profile }),
+    })
+    return payload.data
+  },
+}
+
+export const memberApi = {
+  async register(values: { email: string; password: string; displayName: string; marketingOptIn: boolean; adultConfirmed: boolean }): Promise<Member> {
+    const payload = await request<ApiEnvelope<Member>>('/member/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: values.email, password: values.password, display_name: values.displayName, marketing_opt_in: values.marketingOptIn, adult_confirmed: values.adultConfirmed }) })
+    return payload.data
+  },
+  async login(email: string, password: string): Promise<Member> {
+    const payload = await request<ApiEnvelope<Member>>('/member/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) })
+    return payload.data
+  },
+  async logout(): Promise<void> { await request('/member/logout', { method: 'POST' }) },
+  async me(): Promise<Member> { const payload = await request<ApiEnvelope<Member>>('/member/me'); return payload.data },
+  async dashboard(): Promise<MemberDashboard> { const payload = await request<ApiEnvelope<MemberDashboard>>('/member/dashboard'); return payload.data },
+  async profiles(): Promise<ModerationProfile[]> { const payload = await request<ApiEnvelope<ModerationProfile[]>>('/member/profiles'); return payload.data },
+  async updateProfile(id: string, values: Pick<Profile, 'name' | 'age' | 'category' | 'city' | 'neighborhood' | 'price' | 'contact_phone' | 'availability' | 'description' | 'tags' | 'services' | 'service_for' | 'meeting_places' | 'payment_methods'>): Promise<ModerationProfile> {
+    const payload = await request<ApiEnvelope<ModerationProfile>>(`/member/profiles/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values) })
+    return payload.data
+  },
+  async setProfileStatus(id: string, status: 'pending' | 'archived'): Promise<ModerationProfile> {
+    const payload = await request<ApiEnvelope<ModerationProfile>>(`/member/profiles/${encodeURIComponent(id)}/status`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) })
+    return payload.data
+  },
+  async updateSettings(values: { displayName: string; marketingOptIn: boolean }): Promise<Member> { const payload = await request<ApiEnvelope<Member>>('/member/settings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ display_name: values.displayName, marketing_opt_in: values.marketingOptIn }) }); return payload.data },
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> { await request('/member/password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }) }) },
+}
+
+// -- THE SEX ONLY NESTJS CLIENT --
+async function requestTso<T>(path: string, options?: RequestInit): Promise<T> {
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+  const ADMIN_TOKEN = import.meta.env.VITE_ADMIN_SECRET_TOKEN || '';
+
+  const response = await fetch(`${API_BASE_URL}/admin${path}`, {
+    ...options,
+    headers: { 
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${ADMIN_TOKEN}`,
+      ...(options?.headers || {})
+    },
+  })
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Falha na API TSO: ${response.status} - ${errorText}`)
+  }
+  return response.json()
+}
+
+export const tsoApi = {
+  async getCreators() {
+    return requestTso<any[]>('/creators')
+  },
+  async getPosts() {
+    return requestTso<any[]>('/posts')
+  },
+  async getTrackingLinks() {
+    return requestTso<any[]>('/tracking/links')
+  },
+  async getTrackingClicks() {
+    return requestTso<any[]>('/tracking/clicks')
+  },
+  async getOrders() {
+    return requestTso<any[]>('/commerce/orders')
+  },
+  async createCreator(data: { memberId: string; username: string }) {
+    return requestTso<any>('/creators', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+  async createPost(data: { creatorId: string; title: string; visibility: string; priceCents: number; mediaKeys: string[] }) {
+    return requestTso<any>('/posts', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  }
+}
